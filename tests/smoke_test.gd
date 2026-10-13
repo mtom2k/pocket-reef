@@ -79,11 +79,23 @@ func _run() -> void:
 	await _frames(30)
 	_check("bubbles are flowing", _tank._bubble_layer.count() > 0)
 
+	var tank_on_screen := await _screen_water_fraction()
 	TankState.set_setting("tank_visible", false)
-	await _frames(3)
+	await get_tree().create_timer(0.5).timeout
 	_check("hide tank", not _tank.visible and win.mouse_passthrough)
-	_check("hidden tank idles", Engine.max_fps <= 5)
+	_check("hidden tank idles at %d ticks/s (not slower: menus need the main thread)" % _tank.IDLE_FPS,
+		Engine.max_fps == _tank.IDLE_FPS)
 	_check("hidden tank stops drawing (macOS)", OS.get_name() != "macOS" or not RenderingServer.render_loop_enabled)
+	if tank_on_screen >= 0.0:
+		var after := await _screen_water_fraction()
+		_check("hidden tank really disappears from the screen (water %.0f%% -> %.0f%%)"
+			% [tank_on_screen * 100, after * 100], tank_on_screen > 0.2 and after < tank_on_screen * 0.2)
+	_tank._tray._menus[0].about_to_popup.emit()
+	await _frames(1)
+	_check("menu open while hidden: loop speeds up", Engine.max_fps == _tank.MENU_FPS)
+	_tank._tray._menus[0].popup_hide.emit()
+	await _frames(1)
+	_check("menu closed: back to idle", Engine.max_fps == _tank.IDLE_FPS)
 	_check("hidden tank pauses fish", _tank._fish_layer.process_mode == Node.PROCESS_MODE_DISABLED)
 	var hunger_before: float = TankState.fish[0].hunger
 	await get_tree().create_timer(1.5).timeout
@@ -93,7 +105,8 @@ func _run() -> void:
 	_check("settings while hidden: full speed", Engine.max_fps == 20 and RenderingServer.render_loop_enabled)
 	_tank._settings.hide()
 	await _frames(2)
-	_check("closing settings while hidden: idle again", Engine.max_fps <= 5)
+	await get_tree().create_timer(0.5).timeout
+	_check("closing settings while hidden: idle again", Engine.max_fps == _tank.IDLE_FPS)
 	TankState.set_setting("tank_visible", true)
 	await _frames(3)
 	_check("show tank", _tank.visible and not win.mouse_passthrough)
@@ -115,7 +128,7 @@ func _run() -> void:
 	OS.set_environment("FISHTANK_OCCLUDED", "1")
 	await get_tree().create_timer(0.6).timeout
 	_check("covered tank pauses fish", _tank._fish_layer.process_mode == Node.PROCESS_MODE_DISABLED)
-	_check("covered tank idles", Engine.max_fps <= 5)
+	_check("covered tank idles", Engine.max_fps == _tank.IDLE_FPS)
 	_check("covered tank still clickable", not win.mouse_passthrough and _tank.visible)
 	OS.set_environment("FISHTANK_OCCLUDED", "0")
 	await get_tree().create_timer(1.0).timeout
@@ -130,6 +143,7 @@ func _run() -> void:
 			await get_tree().create_timer(0.25).timeout
 			waited += 0.25
 		_check("macOS reports an off-screen tank as covered (%.2fs)" % waited, _tank._occluded)
+		await get_tree().create_timer(0.5).timeout  # it draws two more frames first
 		_check("...and the tank stops drawing", not RenderingServer.render_loop_enabled)
 		win.position = home
 		waited = 0.0
@@ -138,6 +152,18 @@ func _run() -> void:
 			waited += 0.25
 		_check("bringing it back resumes it (%.2fs)" % waited, not _tank._occluded and RenderingServer.render_loop_enabled)
 		TankState.settings.window_position = [home.x, home.y]
+		# Hiding while covered (drawing already stopped) must still clear the screen.
+		win.position = Vector2i(-20000, -20000)
+		await get_tree().create_timer(1.0).timeout
+		TankState.set_setting("tank_visible", false)
+		await get_tree().create_timer(0.5).timeout
+		win.position = home
+		await get_tree().create_timer(2.0).timeout
+		var shown := await _screen_water_fraction()
+		if shown >= 0.0:
+			_check("hidden-while-covered tank stays off the screen (water %.0f%%)" % (shown * 100), shown < 0.1)
+		TankState.set_setting("tank_visible", true)
+		await get_tree().create_timer(0.5).timeout
 
 	# Species
 	_check("guppies added", TankState.add_fish("guppy", "red", 3) == "")
@@ -284,6 +310,31 @@ func _check(what: String, ok: bool) -> void:
 	print("%s  %s" % ["PASS" if ok else "FAIL", what])
 	if not ok:
 		_failures += 1
+
+
+## Fraction of the tank window's screen area that is water-coloured, from a real screen
+## capture (what the user sees, not what Godot thinks it drew). -1 if capture isn't possible.
+func _screen_water_fraction() -> float:
+	if OS.get_name() != "macOS":
+		return -1.0
+	var win := get_window()
+	var k := DisplayServer.screen_get_scale()
+	var rect := "%d,%d,%d,%d" % [win.position.x / k, win.position.y / k, win.size.x / k, win.size.y / k]
+	var path := OS.get_cache_dir().path_join("fishtank_smoke_capture.png")
+	OS.execute("screencapture", ["-x", "-R", rect, path])
+	var img := Image.load_from_file(path)
+	if img == null or img.is_empty():
+		return -1.0
+	var water := 0
+	var total := 0
+	for y in range(0, img.get_height(), 6):
+		for x in range(0, img.get_width(), 6):
+			var c := img.get_pixel(x, y)
+			total += 1
+			# The water's deep blue (#124e89), allowing for the display's colour profile.
+			if c.b > 0.4 and c.b < 0.65 and c.g > 0.22 and c.g < 0.4 and c.r < 0.25:
+				water += 1
+	return float(water) / total
 
 
 ## Mouse events in tank pixels, converted to window pixels like real OS events.

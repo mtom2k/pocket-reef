@@ -11,6 +11,11 @@
 //    Only Godot's own windows count: the menu-bar icon lives in a status-bar window that is always
 //    visible.
 //
+// 3. No App Nap / timer coalescing. When nothing of ours is on screen, macOS "naps" the app and
+//    coalesces its timers, stretching the main thread's sleeps. Clicks on our menu-bar icon then waited 400-600 ms (and, combined with v0.2.2's
+//    1 tick/s idle loop, up to ~19 s, freezing the menu bar). The app already throttles itself,
+//    so it opts out. System sleep is still allowed. Skipped inside the Godot editor.
+//
 // Build: native/macos_agent/build.sh (universal arm64 + x86_64 dylib).
 
 #import <Cocoa/Cocoa.h>
@@ -28,6 +33,13 @@ typedef struct {
 
 static NSString *const kBundleId = @"dev.fishtank.app";  // keep in sync with export_presets.cfg
 static NSMutableArray *observers;
+static id no_app_nap;
+
+static BOOL is_godot_editor(void) {
+	NSArray<NSString *> *args = [[NSProcessInfo processInfo] arguments];
+	return [args containsObject:@"-e"] || [args containsObject:@"--editor"] ||
+			[args containsObject:@"--project-manager"];
+}
 
 static void publish_occlusion(void) {
 	Class godot_window = NSClassFromString(@"GodotWindow");
@@ -68,6 +80,11 @@ static void initialize(void *userdata, InitLevel level) {
 		return;
 	}
 	// Queued, so both run after Godot has set its own policy and created its windows.
+	if (!is_godot_editor()) {
+		no_app_nap = [[NSProcessInfo processInfo]
+				beginActivityWithOptions:NSActivityUserInitiatedAllowingIdleSystemSleep | NSActivityLatencyCritical
+								  reason:@"Menu-bar app: must answer clicks promptly"];
+	}
 	dispatch_async(dispatch_get_main_queue(), ^{
 		watch_occlusion();
 		if ([[[NSBundle mainBundle] bundleIdentifier] isEqualToString:kBundleId]) {
@@ -84,6 +101,10 @@ static void deinitialize(void *userdata, InitLevel level) {
 		[[NSNotificationCenter defaultCenter] removeObserver:observer];
 	}
 	observers = nil;
+	if (no_app_nap) {
+		[[NSProcessInfo processInfo] endActivity:no_app_nap];
+		no_app_nap = nil;
+	}
 }
 
 __attribute__((visibility("default")))

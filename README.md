@@ -4,7 +4,7 @@ A tiny pixel-art aquarium that lives on your desktop. It floats above your windo
 
 ![Tank](docs/screenshots/tank.png)
 
-**Version:** 0.2.2 (prototype), set in `project.godot` → `application/config/version`.
+**Version:** 0.2.3 (prototype), set in `project.godot` → `application/config/version`.
 
 ## Installing (macOS)
 
@@ -95,7 +95,13 @@ python3 tools/audiogen/bubbles.py                      # bubble sounds
 godot --path . res://tests/smoke_test.tscn -- --save-file=user://smoke_test.json
 ```
 
-This boots the real tank and drives every setting and menu path: resize, hide/show, always on top, mute, stocking rules, adding/removing fish, feeding from the menu, the settings window, and saving. It refuses to run against your real save file.
+The smoke test boots the real tank and drives every setting and menu path: resize, hide/show, always on top, mute, stocking rules, adding/removing fish, feeding from the menu, the settings window, and saving. On macOS it also takes real screen captures to check that a hidden tank actually disappears from the screen. It refuses to run against your real save file.
+
+```bash
+tests/responsiveness.sh
+```
+
+This (macOS) launches a hidden tank and fails if it takes more than 600 ms to answer system events. It guards against the menu-bar freeze from v0.2.2.
 
 **Debug flags** (after `--`):
 - `--screenshot=PATH` saves a frame after 3 s and quits.
@@ -109,8 +115,9 @@ This boots the real tank and drives every setting and menu path: resize, hide/sh
 - **Stocking:** a standard tank holds 24 points, and capacity scales with tank area (a nano tank holds 7). Points per fish: shrimp 0; tetra, guppy and corydoras 1; betta 3; angelfish 5; goldfish 6. Only one betta per tank, because they fight. Shrinking an already-full tank is allowed; it just shows "overstocked" and blocks new fish.
 - **Small tanks:** tall plants are trimmed so they just reach the surface.
 - **Save format 2** (v0.2) adds decor and tank size. v0.1 saves are migrated automatically: your fish are kept and the starter decor is added.
-- **Hiding the tank** makes it invisible and click-through, pauses the fish (they still get hungry), and on macOS stops drawing entirely, ticking once a second. Godot can't hide its main window, and this way the bubbling carries on in the background. On Windows, Godot draws the tray menu itself, so a hidden tank ticks at 5 fps to keep the menu responsive.
-- **Auto-pause when nobody can see the tank (macOS).** Covered by another window, behind a fullscreen app, on another Space, or with the screen locked or asleep. The native plugin listens for macOS's window-visibility notifications and sets `FISHTANK_OCCLUDED`, which `main.gd` polls. While covered, the tank idles like a hidden one (2 ticks a second, nothing drawn, fish paused but still getting hungry, bubbles still audible) and wakes about a second after it becomes visible again. It isn't implemented on Windows yet.
+- **Hiding the tank** makes it invisible and click-through, and pauses the fish (they still get hungry). On macOS it also stops drawing, after first drawing the empty window so no frozen tank is left on screen. Godot can't hide its main window, and this way the bubbling carries on in the background.
+- **Idle never goes below 10 ticks a second.** Godot's frame cap sleeps the main thread, and macOS needs that thread to answer menu-bar clicks. At 1 tick a second (v0.2.1–0.2.2) the whole menu bar stalled. Any open menu gets 60 ticks a second. The native plugin also opts out of App Nap and timer coalescing, which otherwise stretch those sleeps. `tests/responsiveness.sh` guards this.
+- **Auto-pause when nobody can see the tank (macOS).** Covered by another window, behind a fullscreen app, on another Space, or with the screen locked or asleep. The native plugin listens for macOS's window-visibility notifications and sets `FISHTANK_OCCLUDED`, which `main.gd` polls. While covered, the tank idles like a hidden one (10 ticks a second, nothing drawn, fish paused but still getting hungry, bubbles still audible) and wakes within about a second of becoming visible again. It isn't implemented on Windows yet.
 
 ## Performance
 
@@ -126,8 +133,8 @@ Results on an M2 Pro (CPU % of one core; budget for roughly 4–6× on low-end m
 |---|---|---|---|
 | Starter tank | 9.9% | 6.9% | 4.6% |
 | Busy tank | 17.0% | 10.7% | 7.3% |
-| Hidden | 3.6% | 0.7% | — |
-| Covered (v0.2.2) | same as visible | 0.7% | — |
+| Hidden | 3.6% | 1.2% (0.7% in v0.2.2, but that froze the menu bar) | — |
+| Covered | same as visible | 1.2% | — |
 
 **What helps:**
 - Fewer frames per second; engine overhead scales with frame rate.

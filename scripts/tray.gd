@@ -3,6 +3,8 @@ extends Node
 ## context menu on the tank itself.
 
 signal quit_requested
+## A tray or context menu opened/closed (main.gd speeds up the main loop while one is open).
+signal menu_open_changed(open: bool)
 
 enum Item { VERSION, SHOW_TANK, FEED, MUTE, ON_TOP, SETTINGS, QUIT, DECORATE }
 
@@ -52,6 +54,8 @@ func _build_menu() -> PopupMenu:
 	menu.add_separator()
 	menu.add_item("Quit %s" % TankState.app_name(), Item.QUIT)
 	menu.id_pressed.connect(_on_item)
+	menu.about_to_popup.connect(menu_open_changed.emit.bind(true))
+	menu.popup_hide.connect(menu_open_changed.emit.bind(false))
 	add_child(menu)
 	_menus.append(menu)
 	return menu

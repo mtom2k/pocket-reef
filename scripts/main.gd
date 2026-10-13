@@ -17,6 +17,12 @@ const BubbleLayer := preload("res://scripts/bubble_layer.gd")
 const DRAG_THRESHOLD := 4.0
 const WINDOW_POLL := 0.5  # seconds between checks for a moved window
 const OCCLUSION_POLL := 0.25  # seconds between checks of the native "can anyone see us?" flag
+## Never tick slower than this, even when idle. Godot's frame cap sleeps the main thread, and
+## macOS needs that thread to answer menu-bar clicks: at 1 tick a second the whole menu bar
+## stalled (see tests/responsiveness.sh). 10/s is as responsive as a visible tank for ~1% CPU.
+const IDLE_FPS := 10
+## While one of our menus is open, so its highlight follows the mouse smoothly.
+const MENU_FPS := 60
 const GRIP_SIZE := 8  # bottom-right resize handle, in tank pixels
 
 var tank_size := TankState.DEFAULT_TANK
@@ -41,6 +47,9 @@ var _fish_cache: Array[Node] = []
 var _hidden := false  # the player hid the tank
 var _occluded := false  # macOS says no Fishtank window is visible (covered, other Space, locked...)
 var _occlusion_poll := 0.0
+var _menu_open := false
+var _power_generation := 0  # bumped on every power-state change; cancels stale waits
+var _screen_shows_tank := true  # what the last frame drawn before we stopped drawing showed
 var _screenshot_path := ""
 
 # Pointer state
@@ -62,6 +71,7 @@ func _ready() -> void:
 	_tray = Tray.new()
 	add_child(_tray)
 	_tray.quit_requested.connect(_quit)
+	_tray.menu_open_changed.connect(_on_menu_open_changed)
 
 	TankState.roster_changed.connect(_sync_fish)
 	TankState.decor_changed.connect(func(): _decor.sync(tank_size))
@@ -426,21 +436,49 @@ func _poll_occlusion(delta: float) -> void:
 
 
 ## Godot can't hide its main window, so "hidden" means: nothing drawn, clicks pass through,
-## and the main loop ticks slowly. A covered tank (occluded) idles the same way but stays
-## clickable, and wakes within half a second of becoming visible. The bubbling sound keeps
-## playing either way (it has its own thread).
+## and the main loop idles. A covered tank (occluded) idles the same way but stays clickable.
+## The bubbling sound keeps playing either way (it has its own thread).
 func _apply_power_state() -> void:
+	_power_generation += 1
+	var generation := _power_generation
 	var paused := _hidden or _occluded
 	for layer in [_fish_layer, _food_layer, _bubble_layer]:
 		layer.process_mode = Node.PROCESS_MODE_DISABLED if paused else Node.PROCESS_MODE_INHERIT
 	var settings_open := _settings != null and _settings.visible
 	var idle := paused and not settings_open
-	# macOS menus are native, so Godot can stop drawing entirely. Elsewhere Godot draws the tray
-	# menu itself, so keep rendering and tick fast enough for the menu to feel responsive.
-	var native_menus := OS.get_name() == "macOS"
-	RenderingServer.render_loop_enabled = not (idle and native_menus)
-	var idle_fps := (1 if _hidden else 2) if native_menus else 5
-	Engine.max_fps = idle_fps if idle else TankState.target_fps()
+	var fps := TankState.target_fps()
+	if idle:
+		fps = IDLE_FPS
+	if _menu_open:
+		fps = MENU_FPS
+	# macOS menus are native, so Godot can stop drawing entirely while idle. Elsewhere Godot
+	# draws the tray menu itself, so it keeps rendering.
+	var stop_drawing := idle and OS.get_name() == "macOS"
+	if not stop_drawing:
+		RenderingServer.render_loop_enabled = true
+		_screen_shows_tank = visible
+		Engine.max_fps = fps
+		return
+	if _screen_shows_tank != visible:
+		# The tank was just hidden (or shown): draw two more frames first (the window is
+		# double-buffered) so the screen matches, e.g. an empty window after "Show Tank" is
+		# unchecked. Stopping straight away left the last frame of fish frozen on screen.
+		# While covered, macOS draws nothing, so this finishes once the window is uncovered.
+		RenderingServer.render_loop_enabled = true
+		Engine.max_fps = IDLE_FPS if _occluded else TankState.target_fps()
+		for i in 2:
+			await RenderingServer.frame_post_draw
+		if generation != _power_generation:
+			return  # something changed while we waited; that call has taken over
+		_screen_shows_tank = visible
+	# Covered with nothing changed: nobody can see the last frame, so stop straight away.
+	RenderingServer.render_loop_enabled = false
+	Engine.max_fps = fps
+
+
+func _on_menu_open_changed(open: bool) -> void:
+	_menu_open = open
+	_apply_power_state()
 
 
 func _on_some_screen(pos: Vector2i, win_size: Vector2i) -> bool:

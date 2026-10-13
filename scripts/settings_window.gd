@@ -15,6 +15,8 @@ var _scale_pick: OptionButton
 var _volume: HSlider
 var _mute: CheckBox
 var _on_top: CheckBox
+var _login: CheckBox
+var _login_note: Label
 var _hunger_bars := {}  # fish id -> ProgressBar
 var tabs: TabContainer
 
@@ -266,6 +268,19 @@ func _build_tank_tab() -> Control:
 	_on_top.toggled.connect(func(on): TankState.set_setting("always_on_top", on))
 	_row(grid, "Always on top", _on_top)
 
+	var startup := VBoxContainer.new()
+	_login = CheckBox.new()
+	_login.text = "Open %s when I log in" % TankState.app_name()
+	_login.toggled.connect(_on_login_toggled)
+	_login_note = Label.new()
+	_login_note.modulate = Color(1, 1, 1, 0.7)
+	_login_note.add_theme_font_size_override("font_size", 12)
+	_login_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_login_note.custom_minimum_size.x = 260
+	startup.add_child(_login)
+	startup.add_child(_login_note)
+	_row(grid, "Startup", startup)
+
 	var reset := Button.new()
 	reset.text = "Move tank to centre of screen"
 	reset.pressed.connect(func(): TankState.set_setting("window_position", []))
@@ -286,6 +301,23 @@ func _sync_tank_tab() -> void:
 	_volume.set_value_no_signal(s.volume)
 	_mute.set_pressed_no_signal(s.muted)
 	_on_top.set_pressed_no_signal(s.always_on_top)
+	_sync_login()
+
+
+func _sync_login() -> void:
+	var reason := LoginItem.unavailable_reason()
+	_login.disabled = reason != ""
+	_login.set_pressed_no_signal(reason == "" and LoginItem.is_enabled())
+	_login_note.text = reason
+	_login_note.visible = reason != ""
+
+
+func _on_login_toggled(on: bool) -> void:
+	var error := LoginItem.set_enabled(on)
+	_sync_login()
+	if error != "":
+		_login_note.text = error
+		_login_note.visible = true
 
 
 # --- About tab ------------------------------------------------------------

@@ -6,7 +6,11 @@ A tiny pixel-art aquarium that lives on your desktop. It floats above your windo
 
 **Version:** 0.1.0 (prototype), set in `project.godot` → `application/config/version`.
 
-## Running it
+## Installing (macOS)
+
+Open `build/Fishtank-<version>.dmg` and drag **Fishtank** to **Applications**. It lives in the menu bar and has no Dock icon. Quit it from the menu.
+
+## Running from source
 
 You need [Godot 4.7](https://godotengine.org/) (`brew install --cask godot` on macOS).
 
@@ -25,7 +29,7 @@ You can also open the folder in the Godot editor and press **Play**.
 
 **Settings** has three tabs:
 - **Fish:** add or remove fish, rename them, and see how full each one is, plus overall tank stocking.
-- **Tank:** size 2×–5×, bubble volume, mute, always on top, and recentring the tank.
+- **Tank:** size 2×–5×, bubble volume, mute, always on top, **open at login**, and recentring the tank.
 - **About:** version and where the save data lives.
 
 ## Layout
@@ -42,6 +46,9 @@ scripts/
   tray.gd              menu bar / tray icon + right-click menu
   settings_window.gd   native settings window
   tank_audio.gd        bubbler loop + pops
+  login_item.gd        open at login (macOS LaunchAgent / Windows Run key)
+native/macos_agent/    tiny GDExtension: menu-bar-only mode for the exported Mac app
+tools/release/         build_macos.sh -> DMG
 shaders/               swim wobble, plant sway
 art/                   generated sprites (see docs/style-guide.md)
 assets/audio/          generated bubble sounds
@@ -49,6 +56,21 @@ tools/spritegen/       sprite generator (Python + Pillow)
 tools/audiogen/        bubble sound synthesiser (Python, standard library only)
 tests/                 smoke test
 ```
+
+## Packaging
+
+```bash
+tools/release/build_macos.sh    # -> build/Fishtank-<version>.dmg
+```
+
+This needs the Godot 4.7.2 export templates (Editor → Manage Export Templates, or the `.tpz` from the Godot releases page) and Xcode command-line tools. The script:
+1. Builds the small native plugin in `native/macos_agent/`. Godot forces a Dock icon, and this plugin turns the app into a menu-bar-only app, but only inside the exported bundle.
+2. Exports a universal (Apple Silicon + Intel), ad-hoc signed `.app`.
+3. Wraps it in a drag-to-Applications DMG.
+
+**Signing:** the build is only ad-hoc signed. It runs on the Mac that built it, but other Macs will warn about an "unidentified developer" until it's signed with an Apple Developer ID and notarized.
+
+**Version** comes from `project.godot`, and the bundle id is `dev.fishtank.app` (a placeholder until the app has a name).
 
 ## Regenerating assets
 
@@ -84,9 +106,10 @@ This boots the real tank and drives every setting and menu path: resize, hide/sh
 | Transparent overlay + drag | ✅ tested | ⚠️ not tested yet |
 | Menu bar / tray icon | ✅ tested | ⚠️ not tested yet (Godot supports it) |
 | HiDPI scaling | ✅ Retina | ⚠️ uses monitor DPI ÷ 96, needs checking on 125%/150% displays |
+| Open at login | ✅ LaunchAgent (create/validate/remove tested) | ⚠️ Run registry key, not tested yet |
+| Packaged app | ✅ DMG, menu-bar only, ad-hoc signed | ❌ no installer yet |
 
 ## Next up
 
-- Export presets: macOS `.app` (hiding the Dock icon via `LSUIElement`) and Windows `.exe`, plus code signing.
-- Launch at login.
+- Windows `.exe` and installer; Developer ID signing and notarization for macOS.
 - Placing decorations, more species, eating animation, tapping the glass.

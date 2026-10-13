@@ -6,7 +6,7 @@ Writes:
   art/tank/water.png, gravel.png, frame.png     full-tank layers (192x120)
   art/tank/plant_*.png                           cropped plants (base = bottom centre)
   art/sprites/fx/bubble_small.png, bubble_big.png
-  art/icons/tray.png (32px), app_icon.png (256px)
+  art/icons/tray.png (32px), app_icon.png (256px), app_icon_macos.png (1024px, padded)
 """
 
 import json
@@ -113,6 +113,11 @@ def export_icons():
     d.rectangle((3, 25, 28, 28), fill=rgba("sand"))
     tile.alpha_composite(fish, ((32 - fish.width) // 2, (32 - fish.height) // 2 + 1))
     upscale(tile, 8).save(os.path.join(ICONS, "app_icon.png"))
+
+    # macOS icon: 1024px canvas with the tile at Apple's ~824px icon grid (32 * 26 = 832).
+    mac = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
+    mac.alpha_composite(upscale(tile, 26), ((1024 - 832) // 2, (1024 - 832) // 2))
+    mac.save(os.path.join(ICONS, "app_icon_macos.png"))
 
 
 if __name__ == "__main__":

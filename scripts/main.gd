@@ -57,6 +57,7 @@ func _ready() -> void:
 	_sync_fish()
 	_apply_window_settings()
 	get_window().close_requested.connect(_quit)
+	LoginItem.refresh()
 
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--screenshot="):

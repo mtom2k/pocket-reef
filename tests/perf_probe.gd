@@ -5,7 +5,7 @@ extends Node
 ##
 ## Scenarios: "starter" (1 fish), "busy" (40 fish, 16 decorations, max tank), "hidden" (busy, tank hidden),
 ## "frozen" (starter with all game scripts paused, i.e. pure engine overhead).
-## Options: --zoom=N (window pixels per tank pixel), --fps=N (frame cap), --mute. Engine flags such as
+## Options: --zoom=N (window pixels per tank pixel), --performance=smooth|balanced|saver, --mute. Engine flags such as
 ## --rendering-method go before the `--`. Reports its own CPU use (from `ps`) and memory. Prints one line per second for 10 s, then averages.
 
 const Main := preload("res://scenes/main.tscn")
@@ -21,17 +21,19 @@ func _ready() -> void:
 		return
 	var scenario := "starter"
 	var zoom := 3
+	var performance := "balanced"
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--scenario="):
 			scenario = arg.trim_prefix("--scenario=")
 		elif arg.begins_with("--zoom="):
 			zoom = int(arg.trim_prefix("--zoom="))
-		elif arg.begins_with("--fps="):
-			ProjectSettings.set_setting("application/run/max_fps", int(arg.trim_prefix("--fps=")))
+		elif arg.begins_with("--performance="):
+			performance = arg.trim_prefix("--performance=")
 
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TankState.save_path))
 	TankState.load_state()
 	TankState.settings.scale = zoom
+	TankState.settings.performance = performance
 	TankState.settings.muted = "--mute" in OS.get_cmdline_user_args()
 	if scenario != "starter":
 		TankState.set_tank_size(TankState.MAX_TANK)

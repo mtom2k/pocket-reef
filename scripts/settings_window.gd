@@ -12,6 +12,7 @@ var _count_pick: SpinBox
 var _add_status: Label
 var _blurb: Label
 var _scale_pick: OptionButton
+var _performance: OptionButton
 var _size_preset: OptionButton
 var _width: SpinBox
 var _height: SpinBox
@@ -394,6 +395,14 @@ func _build_tank_tab() -> Control:
 	_scale_pick.item_selected.connect(func(i): TankState.set_setting("scale", _scale_pick.get_item_id(i)))
 	_row(grid, "Zoom", _scale_pick)
 
+	_performance = OptionButton.new()
+	for key in TankState.PERFORMANCE_MODES:
+		_performance.add_item(TankState.PERFORMANCE_MODES[key].name)
+		_performance.set_item_metadata(_performance.item_count - 1, key)
+	_performance.item_selected.connect(func(i): TankState.set_setting("performance", _performance.get_item_metadata(i)))
+	_performance.tooltip_text = "Lower frame rates use less CPU and battery. The fish look almost the same at 20 fps."
+	_row(grid, "Performance", _performance)
+
 	_volume = HSlider.new()
 	_volume.max_value = 1.0
 	_volume.step = 0.05
@@ -476,6 +485,9 @@ func _row(grid: GridContainer, label: String, control: Control) -> void:
 func _sync_tank_tab() -> void:
 	var s := TankState.settings
 	_scale_pick.select(_scale_pick.get_item_index(s.scale))
+	for i in _performance.item_count:
+		if _performance.get_item_metadata(i) == s.performance:
+			_performance.select(i)
 	var size := TankState.tank_size()
 	_width.set_value_no_signal(size.x)
 	_height.set_value_no_signal(size.y)

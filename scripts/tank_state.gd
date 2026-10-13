@@ -24,6 +24,13 @@ const SIZE_PRESETS := [
 	["Nano", Vector2i(96, 72)], ["Small", Vector2i(128, 88)],
 	["Standard", Vector2i(192, 120)], ["Large", Vector2i(256, 144)],
 ]
+## Frame-rate modes. Fish move less than a pixel per frame even at 20 fps, so Balanced looks
+## the same as Smooth for about a sixth less CPU (see tests/perf_probe).
+const PERFORMANCE_MODES := {
+	"smooth": {"name": "Smooth (30 fps)", "fps": 30},
+	"balanced": {"name": "Balanced (20 fps)", "fps": 20},
+	"saver": {"name": "Battery saver (12 fps)", "fps": 12},
+}
 ## Stocking points for the standard tank; scales with tank area.
 const BASE_CAPACITY := 24
 ## Full to starving in about four hours, including while the app is closed.
@@ -38,6 +45,7 @@ var settings := {
 	"window_position": [],
 	"tank_width": DEFAULT_TANK.x,
 	"tank_height": DEFAULT_TANK.y,
+	"performance": "balanced",
 }
 var fish: Array[Dictionary] = []
 var decor: Array[Dictionary] = []  # {id, type, x (0..1 of tank width), flip}
@@ -86,6 +94,11 @@ func set_setting(key: String, value: Variant) -> void:
 
 func queue_save() -> void:
 	_save_timer.start()
+
+
+## Frame cap while the tank is showing (main.gd slows right down while it's hidden).
+func target_fps() -> int:
+	return PERFORMANCE_MODES.get(settings.performance, PERFORMANCE_MODES.balanced).fps
 
 
 func set_decorating(on: bool) -> void:

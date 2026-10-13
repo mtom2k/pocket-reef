@@ -7,6 +7,7 @@ const SWAY_PAD := Vector2i(3, 0)
 
 var tank_size := TankState.DEFAULT_TANK
 var _sprites := {}  # decor id -> Sprite2D
+var _emitters: Array[Dictionary] = []
 
 
 func sync(size: Vector2i) -> void:
@@ -19,6 +20,7 @@ func sync(size: Vector2i) -> void:
 	items.sort_custom(func(a, b): return _texture_height(a.type) > _texture_height(b.type))
 	for d in items:
 		_add(d)
+	_emitters = _find_emitters()
 
 
 ## Moves a piece visually while it's being dragged; TankState is updated on release.
@@ -26,6 +28,7 @@ func preview_move(id: int, x_fraction: float) -> void:
 	if _sprites.has(id):
 		var s: Sprite2D = _sprites[id]
 		s.position.x = _left_edge(x_fraction, _visible_size(s).x, s.material != null)
+		_emitters = _find_emitters()
 
 
 ## Topmost decoration under `p` (tank pixels), or -1.
@@ -46,8 +49,12 @@ func item_rect(id: int) -> Rect2:
 	return Rect2(s.position + Vector2(pad, 0), size - Vector2(pad * 2, 0))
 
 
-## [{id, position, mode}] for every decoration that makes bubbles.
+## [{id, position, mode}] for every decoration that makes bubbles (cached on sync).
 func emitters() -> Array[Dictionary]:
+	return _emitters
+
+
+func _find_emitters() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for id in _sprites:
 		var s: Sprite2D = _sprites[id]

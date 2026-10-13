@@ -12,10 +12,10 @@ const SettingsWindow := preload("res://scripts/settings_window.gd")
 const TankAudio := preload("res://scripts/tank_audio.gd")
 const Tray := preload("res://scripts/tray.gd")
 const DecorLayer := preload("res://scripts/decor_layer.gd")
-const BUBBLE_SMALL := preload("res://art/sprites/fx/bubble_small.png")
-const BUBBLE_BIG := preload("res://art/sprites/fx/bubble_big.png")
+const BubbleLayer := preload("res://scripts/bubble_layer.gd")
 
 const DRAG_THRESHOLD := 4.0
+const WINDOW_POLL := 0.5  # seconds between checks for a moved window
 const GRIP_SIZE := 8  # bottom-right resize handle, in tank pixels
 
 var tank_size := TankState.DEFAULT_TANK
@@ -35,6 +35,9 @@ var _school_targets := {}
 var _school_timer := 0.0
 var _emit_timers := {}  # decor id -> seconds until next bubble(s)
 var _last_window_pos := Vector2i.ZERO
+var _window_poll := 0.0
+var _fish_cache: Array[Node] = []
+var _hidden := false
 var _screenshot_path := ""
 
 # Pointer state
@@ -82,6 +85,12 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if _hidden:
+		# Nothing to draw or animate; fish just keep getting hungry.
+		for f in TankState.fish:
+			f.hunger = minf(1.0, f.hunger + TankState.HUNGER_PER_SECOND * delta)
+		return
+
 	_school_timer -= delta
 	if _school_timer <= 0.0:
 		_school_timer = randf_range(4.0, 8.0)
@@ -90,15 +99,17 @@ func _process(delta: float) -> void:
 				_school_targets[species] = random_point_in_band(SpeciesDB.SPECIES[species].depth)
 
 	_run_emitters(delta)
-	_move_bubbles(delta)
 	_update_hover()
 
 	# Native window drags don't report back, so persist the position when it changes.
-	var pos := get_window().position
-	if pos != _last_window_pos:
-		_last_window_pos = pos
-		TankState.settings.window_position = [pos.x, pos.y]
-		TankState.queue_save()
+	_window_poll -= delta
+	if _window_poll <= 0.0:
+		_window_poll = WINDOW_POLL
+		var pos := get_window().position
+		if pos != _last_window_pos:
+			_last_window_pos = pos
+			TankState.settings.window_position = [pos.x, pos.y]
+			TankState.queue_save()
 
 
 # --- Scene ----------------------------------------------------------------
@@ -112,7 +123,9 @@ func _build_layers() -> void:
 	add_child(_fish_layer)
 	_food_layer = Node2D.new()
 	add_child(_food_layer)
-	_bubble_layer = Node2D.new()
+	_bubble_layer = BubbleLayer.new()
+	_bubble_layer.surface_y = water_top() + 2
+	_bubble_layer.surfaced.connect(_on_bubble_surfaced)
 	add_child(_bubble_layer)
 	_frame = _layer_sprite()
 	_overlay = Node2D.new()
@@ -157,12 +170,14 @@ func _sync_fish() -> void:
 	for id in existing:
 		if not wanted.has(id):
 			existing[id].queue_free()
+	_fish_cache.assign(_fish_layer.get_children().filter(func(n): return not n.is_queued_for_deletion()))
 
 
 # --- Queries used by Fish ---------------------------------------------------
 
+## Every live fish. Cached on roster changes: each fish asks for this ~10 times a second.
 func fish_nodes() -> Array[Node]:
-	return _fish_layer.get_children().filter(func(n): return not n.is_queued_for_deletion())
+	return _fish_cache
 
 
 func water_top() -> float:
@@ -241,26 +256,12 @@ func _run_emitters(delta: float) -> void:
 
 
 func _spawn_bubble(at: Vector2, big: bool) -> void:
-	var b := Sprite2D.new()
-	b.texture = BUBBLE_BIG if big else BUBBLE_SMALL
-	b.set_meta("exact", at + Vector2(randf_range(-1, 1), 0))
-	b.set_meta("wobble", randf() * TAU)
-	b.set_meta("big", big)
-	_bubble_layer.add_child(b)
+	_bubble_layer.spawn(at, big)
 
 
-func _move_bubbles(delta: float) -> void:
-	for b: Sprite2D in _bubble_layer.get_children():
-		var p: Vector2 = b.get_meta("exact")
-		var w: float = b.get_meta("wobble") + delta * 4.0
-		p += Vector2(cos(w) * 4.0, -(22.0 if b.get_meta("big") else 16.0)) * delta
-		b.set_meta("exact", p)
-		b.set_meta("wobble", w)
-		b.position = p.round()
-		if p.y < water_top() + 2:
-			if b.get_meta("big") and randf() < 0.35:
-				_audio.pop()
-			b.queue_free()
+func _on_bubble_surfaced(big: bool) -> void:
+	if big and randf() < 0.35:
+		_audio.pop()
 
 
 # --- Input ----------------------------------------------------------------------
@@ -399,11 +400,26 @@ func _apply_window_settings() -> void:
 		win.position = usable.position + (usable.size - new_size) / 2
 	_last_window_pos = win.position
 
-	# Godot can't hide its main window, so "hidden" = nothing drawn + clicks pass through.
-	# Audio and the fish simulation keep running (hunger, background bubbling).
-	visible = s.tank_visible
-	win.mouse_passthrough = not s.tank_visible
-	Engine.max_fps = ProjectSettings.get_setting("application/run/max_fps") if s.tank_visible else 5
+	_hidden = not s.tank_visible
+	visible = not _hidden
+	win.mouse_passthrough = _hidden
+	for layer in [_fish_layer, _food_layer, _bubble_layer]:
+		layer.process_mode = Node.PROCESS_MODE_DISABLED if _hidden else Node.PROCESS_MODE_INHERIT
+	if _hidden:
+		_bubble_layer.clear()
+	_apply_power_state()
+
+
+## Godot can't hide its main window, so "hidden" means: nothing drawn, clicks pass through,
+## and the main loop ticks slowly. The bubbling sound keeps playing (it has its own thread).
+func _apply_power_state() -> void:
+	var settings_open := _settings != null and _settings.visible
+	var idle := _hidden and not settings_open
+	# macOS menus are native, so Godot can stop drawing entirely. Elsewhere Godot draws the tray
+	# menu itself, so keep rendering and tick fast enough for the menu to feel responsive.
+	var native_menus := OS.get_name() == "macOS"
+	RenderingServer.render_loop_enabled = not (idle and native_menus)
+	Engine.max_fps = (1 if native_menus else 5) if idle else TankState.target_fps()
 
 
 func _on_some_screen(pos: Vector2i, win_size: Vector2i) -> bool:
@@ -417,6 +433,7 @@ func _on_some_screen(pos: Vector2i, win_size: Vector2i) -> bool:
 func _open_settings() -> void:
 	if _settings == null:
 		_settings = SettingsWindow.new()
+		_settings.visibility_changed.connect(_apply_power_state)
 		add_child(_settings)
 	_settings.open_near(get_window())
 

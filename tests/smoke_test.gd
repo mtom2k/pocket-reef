@@ -68,12 +68,36 @@ func _run() -> void:
 	await _frames(3)
 
 	# Visibility, on-top, audio
+	# Performance modes and the hidden-tank power state
+	_check("default mode is balanced (20 fps)", Engine.max_fps == 20)
+	for mode in TankState.PERFORMANCE_MODES:
+		TankState.set_setting("performance", mode)
+		await _frames(1)
+		_check("%s mode caps fps at %d" % [mode, TankState.PERFORMANCE_MODES[mode].fps],
+			Engine.max_fps == TankState.PERFORMANCE_MODES[mode].fps)
+	TankState.set_setting("performance", "balanced")
+	await _frames(30)
+	_check("bubbles are flowing", _tank._bubble_layer.count() > 0)
+
 	TankState.set_setting("tank_visible", false)
 	await _frames(3)
 	_check("hide tank", not _tank.visible and win.mouse_passthrough)
+	_check("hidden tank idles", Engine.max_fps <= 5)
+	_check("hidden tank stops drawing (macOS)", OS.get_name() != "macOS" or not RenderingServer.render_loop_enabled)
+	_check("hidden tank pauses fish", _tank._fish_layer.process_mode == Node.PROCESS_MODE_DISABLED)
+	var hunger_before: float = TankState.fish[0].hunger
+	await get_tree().create_timer(1.5).timeout
+	_check("fish still get hungry while hidden", TankState.fish[0].hunger > hunger_before)
+	_tank._open_settings()
+	await _frames(2)
+	_check("settings while hidden: full speed", Engine.max_fps == 20 and RenderingServer.render_loop_enabled)
+	_tank._settings.hide()
+	await _frames(2)
+	_check("closing settings while hidden: idle again", Engine.max_fps <= 5)
 	TankState.set_setting("tank_visible", true)
 	await _frames(3)
 	_check("show tank", _tank.visible and not win.mouse_passthrough)
+	_check("showing restores drawing + fps", RenderingServer.render_loop_enabled and Engine.max_fps == 20)
 	TankState.set_setting("always_on_top", false)
 	await _frames(2)
 	_check("always-on-top off", not win.always_on_top)
@@ -145,6 +169,16 @@ func _run() -> void:
 	_check("frame turns gold in decorate mode",
 		_tank._frame.texture.get_image().get_pixel(0, 0).is_equal_approx(Color("feae34")))
 	TankState.set_decorating(false)
+
+	# Eating (fish decide 10x a second but chase and eat every frame)
+	var gold: Fish = _tank.fish_nodes()[0]
+	gold.data.hunger = 0.9
+	_tank.feed_at(gold.exact_pos.x, 6)
+	var waited := 0.0
+	while gold.data.hunger >= 0.9 and waited < 12.0:
+		await get_tree().create_timer(0.25).timeout
+		waited += 0.25
+	_check("hungry fish finds and eats food (%.1fs)" % waited, gold.data.hunger < 0.9)
 
 	# Pointer interactions (simulated mouse input)
 	var feed_before: int = _tank._food_layer.get_child_count()

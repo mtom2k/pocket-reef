@@ -4,7 +4,7 @@ A tiny pixel-art aquarium that lives on your desktop. It floats above your windo
 
 ![Tank](docs/screenshots/tank.png)
 
-**Version:** 0.2.0 (prototype), set in `project.godot` → `application/config/version`.
+**Version:** 0.2.1 (prototype), set in `project.godot` → `application/config/version`.
 
 ## Installing (macOS)
 
@@ -32,7 +32,7 @@ You can also open the folder in the Godot editor and press **Play**.
 **Settings** has four tabs:
 - **Fish:** add or remove fish, rename them, and see how full each one is, plus stocking against the tank's capacity.
 - **Decor:** add from the catalogue, flip or remove placed pieces, reset to the starter layout, and toggle decorate mode.
-- **Tank:** size (presets or width × height), zoom 2×–5×, bubble volume, mute, always on top, open at login, recentre, and start a new tank.
+- **Tank:** size (presets or width × height), zoom 2×–5×, performance (Smooth 30 / Balanced 20 / Battery saver 12 fps), bubble volume, mute, always on top, open at login, recentre, and start a new tank.
 - **About:** version and where the save data lives.
 
 **Species (7):** neon tetra, goldfish, betta, guppy, corydoras, angelfish and cherry shrimp, with 15 colour variants in all. Corydoras forage on the bottom and dart up for air. Shrimp walk the gravel.
@@ -109,8 +109,32 @@ This boots the real tank and drives every setting and menu path: resize, hide/sh
 - **Stocking:** a standard tank holds 24 points, and capacity scales with tank area (a nano tank holds 7). Points per fish: shrimp 0; tetra, guppy and corydoras 1; betta 3; angelfish 5; goldfish 6. Only one betta per tank, because they fight. Shrinking an already-full tank is allowed; it just shows "overstocked" and blocks new fish.
 - **Small tanks:** tall plants are trimmed so they just reach the surface.
 - **Save format 2** (v0.2) adds decor and tank size. v0.1 saves are migrated automatically: your fish are kept and the starter decor is added.
-- **Hiding the tank** makes it invisible and click-through, and drops it to 5 fps. Godot can't hide its main window, and this way the bubbling carries on in the background.
-- Runs at 30 fps on the lightweight Compatibility renderer, to be kind to battery life.
+- **Hiding the tank** makes it invisible and click-through, pauses the fish (they still get hungry), and on macOS stops drawing entirely, ticking once a second. Godot can't hide its main window, and this way the bubbling carries on in the background. On Windows, Godot draws the tray menu itself, so a hidden tank ticks at 5 fps to keep the menu responsive.
+
+## Performance
+
+`tests/perf_probe` boots the real tank in a scenario and reports its own CPU use and memory:
+
+```bash
+godot --path . res://tests/perf_probe.tscn -- --save-file=user://perf.json --scenario=busy --performance=balanced
+```
+
+Results on an M2 Pro (CPU % of one core; budget for roughly 4–6× on low-end machines). "Busy" is 41 fish, 16 decorations and the largest tank.
+
+| Scenario | v0.2.0 (30 fps) | v0.2.1 default (20 fps) | Battery saver (12 fps) |
+|---|---|---|---|
+| Starter tank | 9.9% | 6.9% | 4.6% |
+| Busy tank | 17.0% | 10.7% | 7.3% |
+| Hidden | 3.6% | 0.7% | — |
+
+**What helps:**
+- Fewer frames per second; engine overhead scales with frame rate.
+- Fish make decisions 10 times a second, staggered across fish, while still moving every frame.
+- The fish list is cached instead of being rebuilt each time.
+- All bubbles are drawn by one node.
+- Physics runs at 10 ticks a second and audio mixes at 22 kHz.
+
+**What doesn't:** zoom level and draw calls (both cheap). Godot's Metal renderer is worse here (more CPU, about 95 MB more memory), so the project stays on the Compatibility renderer.
 
 ## Platform status
 

@@ -5,12 +5,16 @@ extends Node2D
 ##
 ## Habits (SpeciesDB): "swim" roams open water; "bottom" dashes and rests along the gravel and
 ## occasionally darts up for air; "crawl" walks on the gravel and never leaves it.
+##
+## Performance: decisions (targets, neighbours, finding food) run THINK_INTERVAL apart, staggered
+## across fish; movement, chasing a flake and eating it still happen every frame.
 
 const SWIM_SHADER := preload("res://shaders/swim.gdshader")
 const PAD := Vector2i(0, 2)
 const FOOD_SIGHT := 110.0
 const EAT_RANGE := 3.0
 const HUNGER_FOOD_VALUE := 0.25
+const THINK_INTERVAL := 0.1
 
 var data: Dictionary  # roster entry from TankState (shared reference)
 var spec: Dictionary
@@ -30,6 +34,9 @@ var _excited := 0.0
 var _rest := 0.0
 var _air_in := randf_range(40.0, 120.0)
 var _going_for_air := false
+var _think_in := randf() * THINK_INTERVAL
+var _desired := Vector2.ZERO
+var _food: Node2D = null
 
 
 func setup(entry: Dictionary, tank_node: Node, start: Vector2) -> void:
@@ -59,8 +66,17 @@ func _process(delta: float) -> void:
 	data.hunger = minf(1.0, data.hunger + TankState.HUNGER_PER_SECOND * delta)
 	_excited = maxf(0.0, _excited - delta)
 
-	var desired := _steer(delta)
-	velocity = velocity.lerp(desired, clampf(delta * 1.6, 0.0, 1.0))
+	_think_in -= delta
+	if _think_in <= 0.0:
+		_desired = _steer(THINK_INTERVAL - _think_in)
+		_think_in += THINK_INTERVAL
+	if _food != null:
+		if not is_instance_valid(_food) or _food.is_queued_for_deletion():
+			_food = null
+			_think_in = 0.0  # someone else ate it: decide again next frame
+		elif not _try_eat():
+			_desired = _chase(_speed())
+	velocity = velocity.lerp(_desired, clampf(delta * 1.6, 0.0, 1.0))
 	exact_pos += velocity * delta
 	exact_pos = tank.clamp_to_water(exact_pos, _half)
 	if spec.habit == "crawl":
@@ -70,8 +86,11 @@ func _process(delta: float) -> void:
 	else:
 		position = exact_pos.round()
 
-	# Turn only on a clear direction change, so fish don't flicker when hovering.
-	if velocity.x < -1.5:
+	# Face the flake being chased; otherwise turn only on a clear direction change,
+	# so fish don't flicker when hovering.
+	if _food != null and absf(_food.position.x - exact_pos.x) > 2.0:
+		_facing_left = _food.position.x < exact_pos.x
+	elif velocity.x < -1.5:
 		_facing_left = true
 	elif velocity.x > 1.5:
 		_facing_left = false
@@ -98,20 +117,9 @@ func _speed() -> float:
 func _steer(delta: float) -> Vector2:
 	var speed := _speed()
 
-	if data.hunger > 0.12:
-		var food: Node2D = tank.nearest_food(mouth(), FOOD_SIGHT, spec.habit == "crawl")
-		if food:
-			var reach := food.position - mouth()
-			var close := absf(reach.x) <= _half.x and absf(reach.y) <= 6.0 if spec.habit == "crawl" \
-				else reach.length() <= EAT_RANGE
-			if close:
-				tank.eat(food)
-				data.hunger = maxf(0.0, data.hunger - HUNGER_FOOD_VALUE)
-				_excited = 0.6
-				_rest = 0.8
-			if spec.habit == "crawl":
-				return Vector2(signf(reach.x) * speed * 1.5, 0.0)
-			return reach.normalized() * speed * 1.7
+	_food = _pick_food() if data.hunger > 0.12 else null
+	if _food != null:
+		return _chase(speed)
 
 	match spec.habit:
 		"crawl":
@@ -131,6 +139,52 @@ func _steer(delta: float) -> Vector2:
 		desired = to_target.normalized() * speed * _pace * clampf(to_target.length() / 20.0, 0.15, 1.0)
 
 	return desired + _separation(speed) + (_alignment(speed) if spec.schooling else Vector2.ZERO)
+
+
+## Nearest flake, but stick with the current one unless another is clearly closer
+## (otherwise a fish between two flakes keeps changing its mind and never gets either).
+func _pick_food() -> Node2D:
+	var nearest: Node2D = tank.nearest_food(mouth(), FOOD_SIGHT, spec.habit == "crawl")
+	if _food != null and is_instance_valid(_food) and not _food.is_queued_for_deletion() and nearest != null:
+		if mouth().distance_to(nearest.position) > 0.7 * mouth().distance_to(_food.position):
+			return _food
+	return nearest
+
+
+## Swim so the head (not the middle of the body) arrives at the flake.
+func _chase(speed: float) -> Vector2:
+	if spec.habit == "crawl":
+		return Vector2(signf(_food.position.x - mouth().x) * speed * 1.5, 0.0)
+	var head := Vector2(-_half.x if _facing_left else _half.x, 0.0) * 0.7
+	var to_food := _food.position - (exact_pos + head)
+	return to_food.normalized() * speed * 1.7 * clampf(to_food.length() / 6.0, 0.35, 1.0)
+
+
+## Eats the flake being chased if it's within reach. Returns true if it did.
+func _try_eat() -> bool:
+	var reach := _food.position - mouth()
+	var close: bool
+	if spec.habit == "crawl":
+		close = absf(reach.x) <= _half.x and absf(reach.y) <= 6.0
+	else:
+		# At the mouth, or anywhere over the front half of the head.
+		var head := Rect2(exact_pos - _half * 0.8, _half * 1.6)
+		if _facing_left:
+			head.size.x *= 0.5
+		else:
+			head.position.x += head.size.x * 0.5
+			head.size.x *= 0.5
+		close = reach.length() <= EAT_RANGE or head.has_point(_food.position)
+	if not close:
+		return false
+	tank.eat(_food)
+	_food = null
+	data.hunger = maxf(0.0, data.hunger - HUNGER_FOOD_VALUE)
+	_excited = 0.6
+	_rest = 0.8
+	_desired = Vector2.ZERO
+	_think_in = 0.0
+	return true
 
 
 ## Walk a little way along the gravel, then stop and pick at it.
@@ -177,12 +231,14 @@ func _pick_target() -> void:
 func _separation(speed: float) -> Vector2:
 	var push := Vector2.ZERO
 	var personal := maxf(_half.x, 6.0) + 2.0
-	for other: Fish in tank.fish_nodes():
+	var personal_sq := personal * personal
+	for other in tank.fish_nodes():
 		if other == self:
 			continue
-		var away := exact_pos - other.exact_pos
-		var d := away.length()
-		if d > 0.01 and d < personal:
+		var away: Vector2 = exact_pos - other.exact_pos
+		var d_sq := away.length_squared()
+		if d_sq > 0.0001 and d_sq < personal_sq:
+			var d := sqrt(d_sq)
 			push += away / d * (personal - d) / personal
 	return push * speed
 
@@ -190,8 +246,8 @@ func _separation(speed: float) -> Vector2:
 func _alignment(speed: float) -> Vector2:
 	var sum := Vector2.ZERO
 	var n := 0
-	for other: Fish in tank.fish_nodes():
-		if other != self and other.data.species == data.species and exact_pos.distance_to(other.exact_pos) < 24.0:
+	for other in tank.fish_nodes():
+		if other != self and other.data.species == data.species and exact_pos.distance_squared_to(other.exact_pos) < 576.0:
 			sum += other.velocity
 			n += 1
 	return (sum / n - velocity) * 0.3 if n > 0 else Vector2.ZERO

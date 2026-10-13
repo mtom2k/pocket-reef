@@ -111,6 +111,34 @@ func _run() -> void:
 	await _frames(2)
 	_check("unmute restarts bubbler", _tank._audio._loop_player.playing)
 
+	# Covered tank (occlusion). First the logic, with the flag set by hand...
+	OS.set_environment("FISHTANK_OCCLUDED", "1")
+	await get_tree().create_timer(0.6).timeout
+	_check("covered tank pauses fish", _tank._fish_layer.process_mode == Node.PROCESS_MODE_DISABLED)
+	_check("covered tank idles", Engine.max_fps <= 5)
+	_check("covered tank still clickable", not win.mouse_passthrough and _tank.visible)
+	OS.set_environment("FISHTANK_OCCLUDED", "0")
+	await get_tree().create_timer(1.0).timeout
+	_check("uncovered tank resumes", _tank._fish_layer.process_mode == Node.PROCESS_MODE_INHERIT
+		and Engine.max_fps == TankState.target_fps() and RenderingServer.render_loop_enabled)
+	# ...then for real on macOS: a window moved fully off-screen is reported as not visible.
+	if OS.get_name() == "macOS" and OS.has_environment("FISHTANK_OCCLUDED"):
+		var home := win.position
+		win.position = Vector2i(-20000, -20000)
+		var waited := 0.0
+		while not _tank._occluded and waited < 5.0:
+			await get_tree().create_timer(0.25).timeout
+			waited += 0.25
+		_check("macOS reports an off-screen tank as covered (%.2fs)" % waited, _tank._occluded)
+		_check("...and the tank stops drawing", not RenderingServer.render_loop_enabled)
+		win.position = home
+		waited = 0.0
+		while _tank._occluded and waited < 5.0:
+			await get_tree().create_timer(0.25).timeout
+			waited += 0.25
+		_check("bringing it back resumes it (%.2fs)" % waited, not _tank._occluded and RenderingServer.render_loop_enabled)
+		TankState.settings.window_position = [home.x, home.y]
+
 	# Species
 	_check("guppies added", TankState.add_fish("guppy", "red", 3) == "")
 	_check("corydoras added", TankState.add_fish("corydoras", "albino", 2) == "")

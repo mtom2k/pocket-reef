@@ -4,7 +4,8 @@ extends Node
 ##   godot --path . res://tests/perf_probe.tscn -- --save-file=user://perf.json --scenario=busy
 ##
 ## Scenarios: "starter" (1 fish), "busy" (40 fish, 16 decorations, max tank), "hidden" (busy, tank hidden),
-## "frozen" (starter with all game scripts paused, i.e. pure engine overhead).
+## "frozen" (starter with all game scripts paused, i.e. pure engine overhead),
+## "covered" (busy, window moved off-screen so macOS reports it as not visible).
 ## Options: --zoom=N (window pixels per tank pixel), --performance=smooth|balanced|saver, --mute. Engine flags such as
 ## --rendering-method go before the `--`. Reports its own CPU use (from `ps`) and memory. Prints one line per second for 10 s, then averages.
 
@@ -46,6 +47,9 @@ func _ready() -> void:
 	add_child(_tank)
 	if scenario == "hidden":
 		TankState.set_setting("tank_visible", false)
+	if scenario == "covered":  # macOS reports a fully off-screen window as not visible
+		await get_tree().process_frame
+		get_window().position = Vector2i(-20000, -20000)
 	if scenario == "frozen":  # no game scripts running: what's left is engine overhead
 		await get_tree().process_frame
 		_tank.process_mode = Node.PROCESS_MODE_DISABLED

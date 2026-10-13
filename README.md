@@ -4,7 +4,7 @@ A tiny pixel-art aquarium that lives on your desktop. It floats above your windo
 
 ![Tank](docs/screenshots/tank.png)
 
-**Version:** 0.2.1 (prototype), set in `project.godot` → `application/config/version`.
+**Version:** 0.2.2 (prototype), set in `project.godot` → `application/config/version`.
 
 ## Installing (macOS)
 
@@ -57,7 +57,7 @@ scripts/
   settings_window.gd   native settings window
   tank_audio.gd        bubbler loop + pops
   login_item.gd        open at login (macOS LaunchAgent / Windows Run key)
-native/macos_agent/    tiny GDExtension: menu-bar-only mode for the exported Mac app
+native/macos_agent/    tiny GDExtension: menu-bar-only mode + "is the tank visible?" for macOS
 tools/release/         build_macos.sh -> DMG
 shaders/               swim wobble, plant sway
 art/                   generated sprites (see docs/style-guide.md)
@@ -110,6 +110,7 @@ This boots the real tank and drives every setting and menu path: resize, hide/sh
 - **Small tanks:** tall plants are trimmed so they just reach the surface.
 - **Save format 2** (v0.2) adds decor and tank size. v0.1 saves are migrated automatically: your fish are kept and the starter decor is added.
 - **Hiding the tank** makes it invisible and click-through, pauses the fish (they still get hungry), and on macOS stops drawing entirely, ticking once a second. Godot can't hide its main window, and this way the bubbling carries on in the background. On Windows, Godot draws the tray menu itself, so a hidden tank ticks at 5 fps to keep the menu responsive.
+- **Auto-pause when nobody can see the tank (macOS).** Covered by another window, behind a fullscreen app, on another Space, or with the screen locked or asleep. The native plugin listens for macOS's window-visibility notifications and sets `FISHTANK_OCCLUDED`, which `main.gd` polls. While covered, the tank idles like a hidden one (2 ticks a second, nothing drawn, fish paused but still getting hungry, bubbles still audible) and wakes about a second after it becomes visible again. It isn't implemented on Windows yet.
 
 ## Performance
 
@@ -126,6 +127,7 @@ Results on an M2 Pro (CPU % of one core; budget for roughly 4–6× on low-end m
 | Starter tank | 9.9% | 6.9% | 4.6% |
 | Busy tank | 17.0% | 10.7% | 7.3% |
 | Hidden | 3.6% | 0.7% | — |
+| Covered (v0.2.2) | same as visible | 0.7% | — |
 
 **What helps:**
 - Fewer frames per second; engine overhead scales with frame rate.
@@ -145,6 +147,7 @@ Results on an M2 Pro (CPU % of one core; budget for roughly 4–6× on low-end m
 | HiDPI scaling | ✅ Retina | ⚠️ uses monitor DPI ÷ 96, needs checking on 125%/150% displays |
 | Open at login | ✅ LaunchAgent (create/validate/remove tested) | ⚠️ Run registry key, not tested yet |
 | Packaged app | ✅ DMG, menu-bar only, ad-hoc signed | ❌ no installer yet |
+| Auto-pause when covered | ✅ tested (window moved off-screen) | ❌ not yet |
 
 ## Next up
 

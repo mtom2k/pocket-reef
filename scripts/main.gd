@@ -16,6 +16,7 @@ const BubbleLayer := preload("res://scripts/bubble_layer.gd")
 
 const DRAG_THRESHOLD := 4.0
 const WINDOW_POLL := 0.5  # seconds between checks for a moved window
+const OCCLUSION_POLL := 0.25  # seconds between checks of the native "can anyone see us?" flag
 const GRIP_SIZE := 8  # bottom-right resize handle, in tank pixels
 
 var tank_size := TankState.DEFAULT_TANK
@@ -37,7 +38,9 @@ var _emit_timers := {}  # decor id -> seconds until next bubble(s)
 var _last_window_pos := Vector2i.ZERO
 var _window_poll := 0.0
 var _fish_cache: Array[Node] = []
-var _hidden := false
+var _hidden := false  # the player hid the tank
+var _occluded := false  # macOS says no Fishtank window is visible (covered, other Space, locked...)
+var _occlusion_poll := 0.0
 var _screenshot_path := ""
 
 # Pointer state
@@ -85,8 +88,9 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if _hidden:
-		# Nothing to draw or animate; fish just keep getting hungry.
+	_poll_occlusion(delta)
+	if _hidden or _occluded:
+		# Nobody can see the tank: nothing to draw or animate; fish just keep getting hungry.
 		for f in TankState.fish:
 			f.hunger = minf(1.0, f.hunger + TankState.HUNGER_PER_SECOND * delta)
 		return
@@ -403,23 +407,40 @@ func _apply_window_settings() -> void:
 	_hidden = not s.tank_visible
 	visible = not _hidden
 	win.mouse_passthrough = _hidden
-	for layer in [_fish_layer, _food_layer, _bubble_layer]:
-		layer.process_mode = Node.PROCESS_MODE_DISABLED if _hidden else Node.PROCESS_MODE_INHERIT
 	if _hidden:
 		_bubble_layer.clear()
 	_apply_power_state()
 
 
+## The native plugin (native/macos_agent) sets FISHTANK_OCCLUDED when macOS reports that no
+## Fishtank window can be seen. Elsewhere the variable is never set, so the tank never pauses.
+func _poll_occlusion(delta: float) -> void:
+	_occlusion_poll -= delta
+	if _occlusion_poll > 0.0:
+		return
+	_occlusion_poll = OCCLUSION_POLL
+	var occluded := OS.get_environment("FISHTANK_OCCLUDED") == "1"
+	if occluded != _occluded:
+		_occluded = occluded
+		_apply_power_state()
+
+
 ## Godot can't hide its main window, so "hidden" means: nothing drawn, clicks pass through,
-## and the main loop ticks slowly. The bubbling sound keeps playing (it has its own thread).
+## and the main loop ticks slowly. A covered tank (occluded) idles the same way but stays
+## clickable, and wakes within half a second of becoming visible. The bubbling sound keeps
+## playing either way (it has its own thread).
 func _apply_power_state() -> void:
+	var paused := _hidden or _occluded
+	for layer in [_fish_layer, _food_layer, _bubble_layer]:
+		layer.process_mode = Node.PROCESS_MODE_DISABLED if paused else Node.PROCESS_MODE_INHERIT
 	var settings_open := _settings != null and _settings.visible
-	var idle := _hidden and not settings_open
+	var idle := paused and not settings_open
 	# macOS menus are native, so Godot can stop drawing entirely. Elsewhere Godot draws the tray
 	# menu itself, so keep rendering and tick fast enough for the menu to feel responsive.
 	var native_menus := OS.get_name() == "macOS"
 	RenderingServer.render_loop_enabled = not (idle and native_menus)
-	Engine.max_fps = (1 if native_menus else 5) if idle else TankState.target_fps()
+	var idle_fps := (1 if _hidden else 2) if native_menus else 5
+	Engine.max_fps = idle_fps if idle else TankState.target_fps()
 
 
 func _on_some_screen(pos: Vector2i, win_size: Vector2i) -> bool:

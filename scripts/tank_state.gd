@@ -46,6 +46,7 @@ var settings := {
 	"tank_width": DEFAULT_TANK.x,
 	"tank_height": DEFAULT_TANK.y,
 	"performance": "balanced",
+	"substrate": "gravel",
 }
 var fish: Array[Dictionary] = []
 var decor: Array[Dictionary] = []  # {id, type, x (0..1 of tank width), flip}

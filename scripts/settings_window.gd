@@ -1,32 +1,44 @@
 extends Window
-## Native settings window: manage fish and decorations, tank options, and see the app version.
+## Native settings window: fish, decorations and floor, tank options, and the app version.
+##
+## HiDPI: the window is sized in logical pixels times the screen's scale (2 on Retina) and uses
+## the "canvas_items" content scale, so text is rendered at full resolution and stays crisp. When
+## the user resizes the window, the layout reflows instead of zooming.
 
-const LIST_ICON_SCALE := 2
+const LOGICAL_SIZE := Vector2i(780, 740)
+const LOGICAL_MIN := Vector2i(640, 520)
+const FISH_ICON := Vector2(72, 40)
 
+var tabs: TabContainer
+
+var _ui := 1.0
 var _stock_label: Label
 var _stock_bar: ProgressBar
 var _fish_list: VBoxContainer
 var _species_pick: OptionButton
 var _variant_pick: OptionButton
 var _count_pick: SpinBox
+var _add_preview: TextureRect
 var _add_status: Label
 var _blurb: Label
-var _scale_pick: OptionButton
-var _performance: OptionButton
-var _size_preset: OptionButton
-var _width: SpinBox
-var _height: SpinBox
+var _hunger_bars := {}  # fish id -> ProgressBar
+
+var _decorate_toggle: Button
+var _floor_buttons := {}  # substrate key -> Button
 var _decor_list: VBoxContainer
 var _decor_count: Label
 var _decor_status: Label
-var _decorate_toggle: Button
+
+var _size_preset: OptionButton
+var _width: SpinBox
+var _height: SpinBox
+var _scale_pick: OptionButton
+var _performance: OptionButton
 var _volume: HSlider
 var _mute: CheckBox
 var _on_top: CheckBox
 var _login: CheckBox
 var _login_note: Label
-var _hunger_bars := {}  # fish id -> ProgressBar
-var tabs: TabContainer
 
 
 func _init() -> void:
@@ -35,45 +47,68 @@ func _init() -> void:
 	force_native = true
 	always_on_top = true
 	title = "%s Settings" % TankState.app_name()
-	var ui := _ui_scale()
-	content_scale_factor = ui
-	min_size = Vector2i(560, 660) * ui
-	size = min_size
+	_ui = ui_scale()
+	content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	content_scale_aspect = Window.CONTENT_SCALE_ASPECT_IGNORE
+	min_size = Vector2i(Vector2(LOGICAL_MIN) * _ui)
+	size = Vector2i(Vector2(LOGICAL_SIZE) * _ui)
+	content_scale_size = LOGICAL_SIZE
+	size_changed.connect(_on_size_changed)
 	close_requested.connect(hide)
+	theme = UITheme.build()
 
 
-## Shows the window centred on the screen the tank is on.
+## Screen pixels per logical pixel: 2 on Retina Macs, DPI-based on Windows.
+static func ui_scale() -> float:
+	if OS.get_name() == "macOS":
+		return maxf(1.0, DisplayServer.screen_get_scale())
+	return maxf(1.0, DisplayServer.screen_get_dpi() / 96.0)
+
+
+## Shows the window centred on the screen the tank is on, fitting it to that screen.
 func open_near(anchor: Window) -> void:
 	var screen := DisplayServer.screen_get_usable_rect(anchor.current_screen)
+	size = size.min(Vector2i(Vector2(screen.size) * 0.92))
 	position = screen.position + (screen.size - size) / 2
 	show()
 	grab_focus()
 
 
-func _ready() -> void:
+func _on_size_changed() -> void:
+	# Keep the scale fixed at the screen's scale and give the layout the extra room.
+	content_scale_size = Vector2i(Vector2(size) / _ui)
 
+
+func _ready() -> void:
 	var bg := PanelContainer.new()
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
-	var margin := MarginContainer.new()
-	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 12)
+	var margin := _margin(18)
 	bg.add_child(margin)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 14)
+	margin.add_child(column)
+
+	column.add_child(_build_header())
 	tabs = TabContainer.new()
-	margin.add_child(tabs)
-	tabs.add_child(_build_fish_tab())
-	tabs.add_child(_build_decor_tab())
-	tabs.add_child(_build_tank_tab())
-	tabs.add_child(_build_about_tab())
+	tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	column.add_child(tabs)
+	tabs.add_child(_scroll_tab("Fish", _build_fish_tab()))
+	tabs.add_child(_scroll_tab("Decor", _build_decor_tab()))
+	tabs.add_child(_scroll_tab("Tank", _build_tank_tab()))
+	tabs.add_child(_scroll_tab("About", _build_about_tab()))
 
 	TankState.roster_changed.connect(_rebuild_fish_list)
 	TankState.settings_changed.connect(_sync_tank_tab)
 	TankState.settings_changed.connect(_update_stocking)
+	TankState.settings_changed.connect(_sync_floor)
 	TankState.decor_changed.connect(_rebuild_decor_list)
-	TankState.decorate_mode_changed.connect(func(): _decorate_toggle.set_pressed_no_signal(TankState.decorating))
+	TankState.decorate_mode_changed.connect(_sync_decorate_toggle)
 	_rebuild_fish_list()
 	_rebuild_decor_list()
 	_sync_tank_tab()
+	_sync_floor()
+	_sync_decorate_toggle()
 
 
 func _process(_delta: float) -> void:
@@ -84,99 +119,166 @@ func _process(_delta: float) -> void:
 			_hunger_bars[f.id].value = 1.0 - f.hunger
 
 
-static func _ui_scale() -> float:
-	if OS.get_name() == "macOS":
-		return 1.0  # macOS sizes native windows in points already
-	return maxf(1.0, DisplayServer.screen_get_dpi() / 96.0)
+# --- Layout helpers ---------------------------------------------------------
+
+func _build_header() -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	row.add_child(_pixel_icon(load("res://art/icons/app_icon.png"), Vector2(52, 52)))
+	var titles := VBoxContainer.new()
+	titles.add_theme_constant_override("separation", 0)
+	titles.alignment = BoxContainer.ALIGNMENT_CENTER
+	titles.add_child(_label(TankState.app_name(), "Title"))
+	titles.add_child(_label("Version %s" % TankState.version(), "Hint"))
+	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(titles)
+	var feed := _button("Feed fish", "AccentButton")
+	feed.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	feed.pressed.connect(TankState.feed_requested.emit)
+	row.add_child(feed)
+	return row
+
+
+func _scroll_tab(title: String, content: Control) -> ScrollContainer:
+	var scroll := ScrollContainer.new()
+	scroll.name = title
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var pad := _margin(4)
+	pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pad.add_child(content)
+	scroll.add_child(pad)
+	return scroll
+
+
+## A titled card; returns the card's content box.
+func _card(parent: Control, heading: String, hint := "") -> VBoxContainer:
+	var card := PanelContainer.new()
+	card.theme_type_variation = "Card"
+	parent.add_child(card)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	card.add_child(box)
+	if heading != "":
+		box.add_child(_label(heading, "Section"))
+	if hint != "":
+		box.add_child(_label(hint, "Hint", true))
+	return box
+
+
+func _column() -> VBoxContainer:
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 14)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return v
+
+
+func _label(text: String, variation := "", wrap := false) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.theme_type_variation = variation
+	if wrap:
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size.x = 200
+	return l
+
+
+func _button(text: String, variation := "") -> Button:
+	var b := Button.new()
+	b.text = text
+	b.theme_type_variation = variation
+	return b
+
+
+func _margin(px: int) -> MarginContainer:
+	var m := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		m.add_theme_constant_override("margin_" + side, px)
+	return m
+
+
+## A labelled row inside a card: fixed-width label on the left, control on the right.
+func _setting_row(parent: Control, label: String, control: Control) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	var l := _label(label)
+	l.custom_minimum_size.x = 150
+	row.add_child(l)
+	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(control)
+	parent.add_child(row)
+
+
+func _pixel_icon(texture: Texture2D, box: Vector2) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.texture = texture
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.custom_minimum_size = box
+	return icon
+
+
+func _bar(colour: Color, width: float) -> ProgressBar:
+	var bar := ProgressBar.new()
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(width, 12)
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	bar.add_theme_stylebox_override("fill", UITheme.bar_fill(colour))
+	return bar
 
 
 # --- Fish tab -------------------------------------------------------------
 
 func _build_fish_tab() -> Control:
-	var root := VBoxContainer.new()
-	root.name = "Fish"
-	root.add_theme_constant_override("separation", 8)
+	var root := _column()
 
+	var stock := _card(root, "Tank space")
 	var stock_row := HBoxContainer.new()
-	_stock_label = Label.new()
-	_stock_label.custom_minimum_size.x = 230
-	_stock_bar = ProgressBar.new()
-	_stock_bar.show_percentage = false
-	_stock_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_stock_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_stock_bar.custom_minimum_size.y = 12
-	_style_bar(_stock_bar, Color("0099db"))
+	stock_row.add_theme_constant_override("separation", 14)
+	_stock_label = _label("")
+	_stock_label.custom_minimum_size.x = 260
 	stock_row.add_child(_stock_label)
+	_stock_bar = _bar(UITheme.ACCENT, 160)
+	_stock_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	stock_row.add_child(_stock_bar)
-	root.add_child(stock_row)
+	stock.add_child(stock_row)
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var fish := _card(root, "Your fish", "Click a name to rename. The green bar shows how full each fish is.")
 	_fish_list = VBoxContainer.new()
-	_fish_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(_fish_list)
-	root.add_child(scroll)
+	_fish_list.add_theme_constant_override("separation", 6)
+	fish.add_child(_fish_list)
 
-	root.add_child(HSeparator.new())
-	var add_title := Label.new()
-	add_title.text = "Add fish"
-	root.add_child(add_title)
-
+	var add := _card(root, "Add fish")
 	var add_row := HBoxContainer.new()
+	add_row.add_theme_constant_override("separation", 10)
+	_add_preview = _pixel_icon(null, FISH_ICON)
+	add_row.add_child(_add_preview)
 	_species_pick = OptionButton.new()
 	for key in SpeciesDB.SPECIES:
 		_species_pick.add_item(SpeciesDB.SPECIES[key].name)
 		_species_pick.set_item_metadata(_species_pick.item_count - 1, key)
 	_species_pick.item_selected.connect(func(_i): _refresh_variants())
+	_species_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_variant_pick = OptionButton.new()
+	_variant_pick.item_selected.connect(func(_i): _refresh_preview())
+	_variant_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_count_pick = SpinBox.new()
 	_count_pick.min_value = 1
 	_count_pick.max_value = 12
 	_count_pick.value = 1
-	var add_button := Button.new()
-	add_button.text = "Add"
+	_count_pick.tooltip_text = "How many"
+	var add_button := _button("Add", "AccentButton")
 	add_button.pressed.connect(_on_add)
 	for c in [_species_pick, _variant_pick, _count_pick, add_button]:
 		add_row.add_child(c)
-	_species_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_variant_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	root.add_child(add_row)
-
-	_blurb = Label.new()
-	_blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_blurb.modulate = Color(1, 1, 1, 0.7)
-	root.add_child(_blurb)
-	_add_status = Label.new()
-	_add_status.add_theme_color_override("font_color", Color("f6757a"))
-	root.add_child(_add_status)
-
-	var feed := Button.new()
-	feed.text = "Feed fish"
-	feed.pressed.connect(TankState.feed_requested.emit)
-	root.add_child(feed)
+	add.add_child(add_row)
+	_blurb = _label("", "Hint", true)
+	add.add_child(_blurb)
+	_add_status = _label("", "Status", true)
+	add.add_child(_add_status)
 
 	_refresh_variants()
 	return root
-
-
-static func _style_bar(bar: ProgressBar, colour: Color) -> void:
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = colour
-	fill.set_corner_radius_all(3)
-	var bg := StyleBoxFlat.new()
-	bg.bg_color = Color("3a4466")
-	bg.set_corner_radius_all(3)
-	bar.add_theme_stylebox_override("fill", fill)
-	bar.add_theme_stylebox_override("background", bg)
-
-
-func _update_stocking() -> void:
-	var over := TankState.stocking() > TankState.capacity()
-	_stock_label.text = "Stocking %d / %d%s" % [TankState.stocking(), TankState.capacity(), "  (overstocked!)" if over else ""]
-	_stock_label.add_theme_color_override("font_color", Color("f6757a") if over else Color.WHITE)
-	_stock_bar.max_value = TankState.capacity()
-	_stock_bar.value = mini(TankState.stocking(), TankState.capacity())
 
 
 func _refresh_variants() -> void:
@@ -186,8 +288,15 @@ func _refresh_variants() -> void:
 	for v in spec.variants:
 		_variant_pick.add_item(spec.variants[v])
 		_variant_pick.set_item_metadata(_variant_pick.item_count - 1, v)
-	_blurb.text = "%s  (space per fish: %d)" % [spec.blurb, spec.bioload]
+	_blurb.text = "%s Takes %d space%s." % [spec.blurb, spec.bioload, "" if spec.bioload == 1 else "s"]
 	_add_status.text = ""
+	_refresh_preview()
+
+
+func _refresh_preview() -> void:
+	var key: String = _species_pick.get_item_metadata(_species_pick.selected)
+	var variant: String = _variant_pick.get_item_metadata(maxi(0, _variant_pick.selected))
+	_add_preview.texture = load(SpeciesDB.texture_path(key, variant))
 
 
 func _on_add() -> void:
@@ -196,161 +305,186 @@ func _on_add() -> void:
 	_add_status.text = TankState.add_fish(key, variant, int(_count_pick.value))
 
 
+func _update_stocking() -> void:
+	var used := TankState.stocking()
+	var room := TankState.capacity()
+	var over := used > room
+	_stock_label.text = "%d of %d spaces used%s" % [used, room, "  (overstocked!)" if over else ""]
+	_stock_label.add_theme_color_override("font_color", UITheme.WARN if over else UITheme.TEXT)
+	_stock_bar.max_value = room
+	_stock_bar.value = mini(used, room)
+
+
 func _rebuild_fish_list() -> void:
 	for child in _fish_list.get_children():
 		child.queue_free()
 	_hunger_bars.clear()
-
 	_update_stocking()
 
 	if TankState.fish.is_empty():
-		var empty := Label.new()
-		empty.text = "Your tank is empty. Add some fish below."
-		_fish_list.add_child(empty)
+		_fish_list.add_child(_label("Your tank is empty. Add some fish below.", "Hint"))
 		return
 
 	for f in TankState.fish:
 		var spec: Dictionary = SpeciesDB.SPECIES[f.species]
+		var id: int = f.id
 		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
+		row.add_theme_constant_override("separation", 12)
+		row.add_child(_pixel_icon(load(SpeciesDB.texture_path(f.species, f.variant)), FISH_ICON))
 
-		var icon := TextureRect.new()
-		icon.texture = load(SpeciesDB.texture_path(f.species, f.variant))
-		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.custom_minimum_size = Vector2(28, 18) * LIST_ICON_SCALE
-		row.add_child(icon)
-
+		var names := VBoxContainer.new()
+		names.add_theme_constant_override("separation", 2)
+		names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var name_edit := LineEdit.new()
 		name_edit.text = f.name
-		name_edit.tooltip_text = "%s (%s)" % [spec.name, spec.variants[f.variant]]
-		name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var id: int = f.id
 		name_edit.text_submitted.connect(func(t): TankState.rename_fish(id, t))
 		name_edit.focus_exited.connect(func(): TankState.rename_fish(id, name_edit.text))
-		row.add_child(name_edit)
+		names.add_child(name_edit)
+		names.add_child(_label("%s · %s" % [spec.name, spec.variants[f.variant]], "Hint"))
+		row.add_child(names)
 
-		var kind := Label.new()
-		kind.text = spec.name
-		kind.custom_minimum_size.x = 90
-		row.add_child(kind)
-
-		var hunger := ProgressBar.new()
+		var hunger := _bar(UITheme.GOOD, 110)
 		hunger.max_value = 1.0
 		hunger.value = 1.0 - f.hunger
-		hunger.show_percentage = false
 		hunger.tooltip_text = "Fullness"
-		hunger.custom_minimum_size = Vector2(70, 10)
-		_style_bar(hunger, Color("63c74d"))
-		hunger.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		_hunger_bars[id] = hunger
 		row.add_child(hunger)
 
-		var remove := Button.new()
-		remove.text = "Remove"
+		var remove := _button("Remove")
+		remove.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		remove.pressed.connect(func(): TankState.remove_fish(id))
 		row.add_child(remove)
-
 		_fish_list.add_child(row)
 
 
 # --- Decor tab ------------------------------------------------------------
 
 func _build_decor_tab() -> Control:
-	var root := VBoxContainer.new()
-	root.name = "Decor"
-	root.add_theme_constant_override("separation", 8)
+	var root := _column()
 
-	_decorate_toggle = Button.new()
+	var mode := _card(root, "Arrange your tank",
+		"In decorate mode the glass turns gold: drag a decoration to move it, double-click to flip it, right-click to remove it, and press Esc when you're done.")
+	_decorate_toggle = _button("Start decorating", "AccentButton")
 	_decorate_toggle.toggle_mode = true
-	_decorate_toggle.text = "Decorate mode: move things around in the tank"
 	_decorate_toggle.toggled.connect(TankState.set_decorating)
-	root.add_child(_decorate_toggle)
-	var hint := Label.new()
-	hint.text = "In decorate mode, drag a decoration to move it, double-click to flip it, and right-click to remove it. Press Esc when you're done."
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint.add_theme_font_size_override("font_size", 12)
-	hint.modulate = Color(1, 1, 1, 0.7)
-	root.add_child(hint)
+	mode.add_child(_decorate_toggle)
 
-	var add_title := Label.new()
-	add_title.text = "Add a decoration"
-	root.add_child(add_title)
-	var catalogue := GridContainer.new()
-	catalogue.columns = 5
-	for type in DecorDB.DECOR:
+	var floor_box := _card(root, "Floor", "Pick what covers the bottom of the tank.")
+	var floors := GridContainer.new()
+	floors.columns = 4
+	floors.add_theme_constant_override("h_separation", 8)
+	floors.add_theme_constant_override("v_separation", 8)
+	var group := ButtonGroup.new()
+	for key in TankRenderer.SUBSTRATES:
 		var b := Button.new()
-		b.icon = _catalogue_icon(type)
-		b.expand_icon = true
-		b.text = DecorDB.DECOR[type].name
-		b.add_theme_font_size_override("font_size", 10)
+		b.toggle_mode = true
+		b.button_group = group
+		b.icon = _floor_swatch(key)
+		b.text = TankRenderer.SUBSTRATES[key].name
 		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		b.clip_text = true
 		b.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		b.custom_minimum_size = Vector2(96, 70)
-		b.tooltip_text = "Add %s" % DecorDB.DECOR[type].name
-		b.pressed.connect(func(): _decor_status.text = TankState.add_decor(type))
-		catalogue.add_child(b)
-	root.add_child(catalogue)
+		b.add_theme_font_size_override("font_size", 13)
+		b.custom_minimum_size = Vector2(150, 0)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.pressed.connect(TankState.set_setting.bind("substrate", key))
+		floors.add_child(b)
+		_floor_buttons[key] = b
+	floor_box.add_child(floors)
 
-	root.add_child(HSeparator.new())
-	_decor_count = Label.new()
-	root.add_child(_decor_count)
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_decor_list = VBoxContainer.new()
-	_decor_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(_decor_list)
-	root.add_child(scroll)
+	for category in DecorDB.CATEGORIES:
+		var box := _card(root, category[0])
+		var grid := GridContainer.new()
+		grid.columns = 5
+		grid.add_theme_constant_override("h_separation", 8)
+		grid.add_theme_constant_override("v_separation", 8)
+		for type in category[1]:
+			var b := Button.new()
+			b.icon = _catalogue_icon(type)
+			b.text = DecorDB.DECOR[type].name
+			b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+			b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			b.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			b.add_theme_font_size_override("font_size", 12)
+			b.clip_text = true
+			b.custom_minimum_size = Vector2(118, 0)
+			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			b.tooltip_text = "Add %s to the tank" % DecorDB.DECOR[type].name
+			b.pressed.connect(func(): _decor_status.text = TankState.add_decor(type))
+			grid.add_child(b)
+		box.add_child(grid)
 
-	_decor_status = Label.new()
-	_decor_status.add_theme_color_override("font_color", Color("f6757a"))
-	root.add_child(_decor_status)
-	var reset := Button.new()
-	reset.text = "Reset to the starter layout"
+	var placed := _card(root, "")
+	var placed_head := HBoxContainer.new()
+	_decor_count = _label("", "Section")
+	_decor_count.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	placed_head.add_child(_decor_count)
+	var reset := _button("Reset to starter layout")
 	reset.pressed.connect(TankState.reset_decor)
-	root.add_child(reset)
+	placed_head.add_child(reset)
+	placed.add_child(placed_head)
+	_decor_status = _label("", "Status", true)
+	placed.add_child(_decor_status)
+	_decor_list = VBoxContainer.new()
+	_decor_list.add_theme_constant_override("separation", 6)
+	placed.add_child(_decor_list)
 	return root
 
 
-## Icons share one canvas; small pieces get a whole-number zoom so they're still readable.
+## Catalogue icons share a 48px canvas, with small pieces zoomed by a whole number so they
+## stay crisp and readable; drawn 2x in the button.
 static func _catalogue_icon(type: String) -> Texture2D:
 	var src: Image = load(DecorDB.texture_path(type)).get_image()
 	src.convert(Image.FORMAT_RGBA8)
-	var zoom := clampi(36 / maxi(src.get_width(), src.get_height()), 1, 3)
+	var zoom := clampi(40 / maxi(src.get_width(), src.get_height()), 1, 3)
 	src.resize(src.get_width() * zoom, src.get_height() * zoom, Image.INTERPOLATE_NEAREST)
-	var canvas := Image.create_empty(64, 64, false, Image.FORMAT_RGBA8)
-	canvas.blit_rect(src, Rect2i(Vector2i.ZERO, src.get_size()), Vector2i((64 - src.get_width()) / 2, 64 - src.get_height()))
+	var canvas := Image.create_empty(48, 48, false, Image.FORMAT_RGBA8)
+	var at := Vector2i((48 - src.get_width()) / 2, 48 - src.get_height())
+	canvas.blit_rect(src, Rect2i(Vector2i.ZERO, src.get_size()), at)
+	canvas.resize(96, 96, Image.INTERPOLATE_NEAREST)
 	return ImageTexture.create_from_image(canvas)
+
+
+## A strip of the actual floor, as the tank draws it.
+static func _floor_swatch(key: String) -> Texture2D:
+	var size := Vector2i(48, TankRenderer.GRAVEL_DEPTH + 4)
+	var img := Image.create_empty(size.x, size.y, false, Image.FORMAT_RGBA8)
+	img.fill(TankRenderer.C.dusk)
+	var strip := TankRenderer.gravel(size, key)
+	img.blend_rect(strip, Rect2i(Vector2i.ZERO, size), Vector2i.ZERO)
+	img.resize(size.x * 3, size.y * 3, Image.INTERPOLATE_NEAREST)
+	return ImageTexture.create_from_image(img)
+
+
+func _sync_floor() -> void:
+	var key: String = TankState.settings.substrate
+	if _floor_buttons.has(key):
+		_floor_buttons[key].set_pressed_no_signal(true)
+
+
+func _sync_decorate_toggle() -> void:
+	_decorate_toggle.set_pressed_no_signal(TankState.decorating)
+	_decorate_toggle.text = "Done decorating" if TankState.decorating else "Start decorating"
 
 
 func _rebuild_decor_list() -> void:
 	for child in _decor_list.get_children():
 		child.queue_free()
-	_decor_count.text = "In your tank (%d / %d)" % [TankState.decor.size(), DecorDB.MAX_ITEMS]
+	_decor_count.text = "In your tank (%d of %d)" % [TankState.decor.size(), DecorDB.MAX_ITEMS]
+	if TankState.decor.is_empty():
+		_decor_list.add_child(_label("No decorations yet. Pick some above.", "Hint"))
 	for d in TankState.decor:
+		var id: int = d.id
 		var row := HBoxContainer.new()
-		var icon := TextureRect.new()
-		icon.texture = load(DecorDB.texture_path(d.type))
-		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.custom_minimum_size = Vector2(40, 28)
-		row.add_child(icon)
-		var label := Label.new()
-		label.text = DecorDB.DECOR[d.type].name
+		row.add_theme_constant_override("separation", 12)
+		row.add_child(_pixel_icon(load(DecorDB.texture_path(d.type)), Vector2(56, 36)))
+		var label := _label(DecorDB.DECOR[d.type].name)
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(label)
-		var id: int = d.id
-		var flip := Button.new()
-		flip.text = "Flip"
+		var flip := _button("Flip")
 		flip.pressed.connect(func(): TankState.flip_decor(id))
 		row.add_child(flip)
-		var remove := Button.new()
-		remove.text = "Remove"
+		var remove := _button("Remove")
 		remove.pressed.connect(func(): TankState.remove_decor(id))
 		row.add_child(remove)
 		_decor_list.add_child(row)
@@ -359,91 +493,73 @@ func _rebuild_decor_list() -> void:
 # --- Tank tab -------------------------------------------------------------
 
 func _build_tank_tab() -> Control:
-	var grid := GridContainer.new()
-	grid.name = "Tank"
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 16)
-	grid.add_theme_constant_override("v_separation", 12)
+	var root := _column()
 
-	var size_box := VBoxContainer.new()
-	var size_row := HBoxContainer.new()
+	var size_card := _card(root, "Size", "Smallest %d × %d, largest %d × %d tank pixels. You can also drag the tank's bottom-right corner." % [
+		TankState.MIN_TANK.x, TankState.MIN_TANK.y, TankState.MAX_TANK.x, TankState.MAX_TANK.y])
 	_size_preset = OptionButton.new()
 	for preset in TankState.SIZE_PRESETS:
 		_size_preset.add_item("%s (%d × %d)" % [preset[0], preset[1].x, preset[1].y])
 	_size_preset.add_item("Custom")
 	_size_preset.item_selected.connect(_on_size_preset)
+	_setting_row(size_card, "Preset", _size_preset)
+	var dims := HBoxContainer.new()
+	dims.add_theme_constant_override("separation", 8)
 	_width = _size_spin(TankState.MIN_TANK.x, TankState.MAX_TANK.x)
 	_height = _size_spin(TankState.MIN_TANK.y, TankState.MAX_TANK.y)
-	var times := Label.new()
-	times.text = "×"
-	for c in [_size_preset, _width, times, _height]:
-		size_row.add_child(c)
-	size_box.add_child(size_row)
-	var size_note := Label.new()
-	size_note.text = "Smallest %d × %d, largest %d × %d pixels. You can also drag the tank's bottom-right corner." % [
-		TankState.MIN_TANK.x, TankState.MIN_TANK.y, TankState.MAX_TANK.x, TankState.MAX_TANK.y]
-	size_note.add_theme_font_size_override("font_size", 12)
-	size_note.modulate = Color(1, 1, 1, 0.7)
-	size_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	size_note.custom_minimum_size.x = 300
-	size_box.add_child(size_note)
-	_row(grid, "Tank size", size_box)
+	dims.add_child(_width)
+	dims.add_child(_label("×"))
+	dims.add_child(_height)
+	_setting_row(size_card, "Width × height", dims)
 
+	var display := _card(root, "Display")
 	_scale_pick = OptionButton.new()
 	for s in [2, 3, 4, 5]:
 		_scale_pick.add_item("%d×" % s, s)
 	_scale_pick.item_selected.connect(func(i): TankState.set_setting("scale", _scale_pick.get_item_id(i)))
-	_row(grid, "Zoom", _scale_pick)
-
+	_setting_row(display, "Zoom", _scale_pick)
 	_performance = OptionButton.new()
 	for key in TankState.PERFORMANCE_MODES:
 		_performance.add_item(TankState.PERFORMANCE_MODES[key].name)
 		_performance.set_item_metadata(_performance.item_count - 1, key)
 	_performance.item_selected.connect(func(i): TankState.set_setting("performance", _performance.get_item_metadata(i)))
 	_performance.tooltip_text = "Lower frame rates use less CPU and battery. The fish look almost the same at 20 fps."
-	_row(grid, "Performance", _performance)
+	_setting_row(display, "Performance", _performance)
+	_on_top = CheckBox.new()
+	_on_top.text = "Keep the tank above other windows"
+	_on_top.toggled.connect(func(on): TankState.set_setting("always_on_top", on))
+	display.add_child(_on_top)
 
+	var sound := _card(root, "Sound")
 	_volume = HSlider.new()
 	_volume.max_value = 1.0
 	_volume.step = 0.05
-	_volume.custom_minimum_size.x = 200
+	_volume.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_volume.value_changed.connect(func(v): TankState.set_setting("volume", v))
-	_row(grid, "Bubble volume", _volume)
-
+	_setting_row(sound, "Bubble volume", _volume)
 	_mute = CheckBox.new()
-	_mute.text = "Mute"
+	_mute.text = "Mute the bubbles"
 	_mute.toggled.connect(func(on): TankState.set_setting("muted", on))
-	_row(grid, "", _mute)
+	sound.add_child(_mute)
 
-	_on_top = CheckBox.new()
-	_on_top.text = "Keep tank above other windows"
-	_on_top.toggled.connect(func(on): TankState.set_setting("always_on_top", on))
-	_row(grid, "Always on top", _on_top)
-
-	var startup := VBoxContainer.new()
+	var system := _card(root, "System")
 	_login = CheckBox.new()
 	_login.text = "Open %s when I log in" % TankState.app_name()
 	_login.toggled.connect(_on_login_toggled)
-	_login_note = Label.new()
-	_login_note.modulate = Color(1, 1, 1, 0.7)
-	_login_note.add_theme_font_size_override("font_size", 12)
-	_login_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_login_note.custom_minimum_size.x = 260
-	startup.add_child(_login)
-	startup.add_child(_login_note)
-	_row(grid, "Startup", startup)
+	system.add_child(_login)
+	_login_note = _label("", "Hint", true)
+	system.add_child(_login_note)
+	var centre := _button("Move tank to centre of screen")
+	centre.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	centre.pressed.connect(func(): TankState.set_setting("window_position", []))
+	system.add_child(centre)
 
-	var reset := Button.new()
-	reset.text = "Move tank to centre of screen"
-	reset.pressed.connect(func(): TankState.set_setting("window_position", []))
-	_row(grid, "Position", reset)
-
-	var restart := Button.new()
-	restart.text = "Start a new tank…"
-	restart.tooltip_text = "One goldfish, the starter decorations and the standard size."
+	var restart_card := _card(root, "Start over", "Replaces all your fish with one goldfish, restores the starter decorations and the standard size.")
+	var restart := _button("Start a new tank…", "DangerButton")
+	restart.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	restart.pressed.connect(_on_new_tank.bind(restart))
-	_row(grid, "Start over", restart)
-	return grid
+	restart_card.add_child(restart)
+	return root
 
 
 func _size_spin(lo: int, hi: int) -> SpinBox:
@@ -451,6 +567,7 @@ func _size_spin(lo: int, hi: int) -> SpinBox:
 	spin.min_value = lo
 	spin.max_value = hi
 	spin.step = TankState.SIZE_STEP
+	spin.custom_minimum_size.x = 110
 	spin.value_changed.connect(func(_v): TankState.set_tank_size(Vector2i(int(_width.value), int(_height.value))))
 	return spin
 
@@ -473,13 +590,6 @@ func _on_new_tank(button: Button) -> void:
 	if button.has_meta("armed"):
 		button.remove_meta("armed")
 		button.text = "Start a new tank…"
-
-
-func _row(grid: GridContainer, label: String, control: Control) -> void:
-	var l := Label.new()
-	l.text = label
-	grid.add_child(l)
-	grid.add_child(control)
 
 
 func _sync_tank_tab() -> void:
@@ -521,31 +631,24 @@ func _on_login_toggled(on: bool) -> void:
 # --- About tab ------------------------------------------------------------
 
 func _build_about_tab() -> Control:
-	var box := VBoxContainer.new()
-	box.name = "About"
-	box.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_theme_constant_override("separation", 10)
-
-	var icon := TextureRect.new()
-	icon.texture = load("res://art/icons/app_icon.png")
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.custom_minimum_size = Vector2(96, 96)
-	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	box.add_child(icon)
-
-	var lines := [
-		["%s" % TankState.app_name(), 22],
-		["Version %s" % TankState.version(), 16],
-		["Built with Godot %s" % Engine.get_version_info().string, 12],
-		["Palette: ENDESGA 32", 12],
-		["Save data: %s" % ProjectSettings.globalize_path("user://"), 11],
-	]
-	for line in lines:
-		var l := Label.new()
-		l.text = line[0]
-		l.add_theme_font_size_override("font_size", line[1])
+	var root := _column()
+	var card := _card(root, "")
+	card.alignment = BoxContainer.ALIGNMENT_CENTER
+	var icon := _pixel_icon(load("res://art/icons/app_icon.png"), Vector2(128, 128))
+	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	card.add_child(icon)
+	for line in [
+		[TankState.app_name(), "Title"],
+		["Version %s" % TankState.version(), "Section"],
+		["A tiny aquarium that lives on your desktop.", ""],
+		["Built with Godot %s · Palette: ENDESGA 32" % Engine.get_version_info().string, "Hint"],
+	]:
+		var l := _label(line[0], line[1])
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		box.add_child(l)
-	return box
+		card.add_child(l)
+	var data := _button("Open save folder")
+	data.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	data.tooltip_text = ProjectSettings.globalize_path("user://")
+	data.pressed.connect(func(): OS.shell_open(ProjectSettings.globalize_path("user://")))
+	card.add_child(data)
+	return root

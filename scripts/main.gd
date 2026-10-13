@@ -44,6 +44,7 @@ var _emit_timers := {}  # decor id -> seconds until next bubble(s)
 var _last_window_pos := Vector2i.ZERO
 var _window_poll := 0.0
 var _fish_cache: Array[Node] = []
+var _substrate := ""
 var _hidden := false  # the player hid the tank
 var _occluded := false  # macOS says no Fishtank window is visible (covered, other Space, locked...)
 var _occlusion_poll := 0.0
@@ -156,7 +157,7 @@ func _layer_sprite() -> Sprite2D:
 
 func _rebuild_tank() -> void:
 	_water.texture = ImageTexture.create_from_image(TankRenderer.water(tank_size))
-	_gravel.texture = ImageTexture.create_from_image(TankRenderer.gravel(tank_size))
+	_rebuild_gravel()
 	_rebuild_frame()
 	_decor.sync(tank_size)
 	# Keep food inside a shrunken tank.
@@ -164,6 +165,11 @@ func _rebuild_tank() -> void:
 		food.floor_y = minf(food.floor_y, floor_y() + 1.0)
 		food.exact_pos = food.exact_pos.clamp(Vector2(2, water_top() + 1), Vector2(tank_size.x - 3, food.floor_y))
 	_overlay.queue_redraw()
+
+
+func _rebuild_gravel() -> void:
+	_substrate = TankState.settings.substrate
+	_gravel.texture = ImageTexture.create_from_image(TankRenderer.gravel(tank_size, _substrate))
 
 
 func _rebuild_frame() -> void:
@@ -401,6 +407,8 @@ func _apply_window_settings() -> void:
 		tank_size = new_tank
 		win.content_scale_size = tank_size
 		_rebuild_tank()
+	elif s.substrate != _substrate:
+		_rebuild_gravel()
 	var new_size := tank_size * _pixel_scale()
 	if win.size != new_size:
 		win.size = new_size

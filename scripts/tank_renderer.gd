@@ -7,15 +7,43 @@ class_name TankRenderer
 const WATER_TOP := 10
 const GRAVEL_DEPTH := 16  # gravel band at the bottom, including the part decor sinks into
 
+## ENDESGA 32 (same names as tools/spritegen/palette.py).
 const C := {
-	"cyan": Color("2ce8f5"), "sky": Color("0099db"), "deep_blue": Color("124e89"),
-	"dusk": Color("3a4466"), "navy": Color("262b44"), "slate": Color("5a6988"),
-	"silver": Color("c0cbdc"), "sand": Color("e4a672"), "wood": Color("b86f50"),
-	"tan": Color("c28569"), "cream": Color("ead4aa"), "bark": Color("733e39"),
-	"clay": Color("d77643"), "amber": Color("feae34"),
+	"rust": Color("be4a2f"), "clay": Color("d77643"), "cream": Color("ead4aa"), "sand": Color("e4a672"),
+	"wood": Color("b86f50"), "bark": Color("733e39"), "umber": Color("3e2731"), "crimson": Color("a22633"),
+	"red": Color("e43b44"), "orange": Color("f77622"), "amber": Color("feae34"), "lemon": Color("fee761"),
+	"leaf": Color("63c74d"), "moss": Color("3e8948"), "pine": Color("265c42"), "abyss_green": Color("193c3e"),
+	"deep_blue": Color("124e89"), "sky": Color("0099db"), "cyan": Color("2ce8f5"), "white": Color("ffffff"),
+	"silver": Color("c0cbdc"), "steel": Color("8b9bb4"), "slate": Color("5a6988"), "dusk": Color("3a4466"),
+	"navy": Color("262b44"), "ink": Color("181425"), "neon_pink": Color("ff0044"), "plum": Color("68386c"),
+	"orchid": Color("b55088"), "salmon": Color("f6757a"), "peach": Color("e8b796"), "tan": Color("c28569"),
 }
-const GRAVEL_TONES := ["sand", "wood", "tan", "cream", "bark", "clay"]
-const GRAVEL_WEIGHTS := [5, 4, 4, 1, 2, 2]
+## One step darker, for pebble edges and the deepest gravel.
+const DARKER := {
+	"red": "crimson", "amber": "clay", "leaf": "moss", "sky": "deep_blue", "orchid": "plum", "cyan": "sky",
+	"lemon": "amber", "white": "silver", "neon_pink": "crimson", "steel": "slate", "slate": "dusk",
+	"tan": "wood", "sand": "tan", "silver": "steel", "wood": "bark", "moss": "pine", "pine": "abyss_green",
+	"cream": "sand", "peach": "tan", "salmon": "orchid", "ink": "ink", "navy": "ink", "dusk": "navy",
+	"clay": "rust", "bark": "umber", "orange": "rust", "plum": "navy", "abyss_green": "ink",
+}
+
+## Floor options. style: "speckle" (mixed grains), "sand" (fine, rippled), "pebbles" (individual stones).
+const SUBSTRATES := {
+	"gravel": {"name": "Natural Gravel", "style": "speckle",
+		"tones": {"sand": 5, "wood": 4, "tan": 4, "cream": 1, "bark": 2, "clay": 2}, "top": ["cream", "sand"]},
+	"sand": {"name": "Fine Sand", "style": "sand",
+		"tones": {"cream": 5, "sand": 3, "peach": 3}, "top": ["cream", "white"]},
+	"coral_sand": {"name": "Coral Sand", "style": "sand",
+		"tones": {"white": 3, "cream": 4, "peach": 3, "salmon": 1}, "top": ["white", "cream"]},
+	"black_sand": {"name": "Black Sand", "style": "speckle",
+		"tones": {"navy": 5, "ink": 3, "dusk": 3, "slate": 1, "silver": 0.3}, "top": ["dusk", "slate"]},
+	"river_pebbles": {"name": "River Pebbles", "style": "pebbles",
+		"tones": {"steel": 3, "slate": 2, "tan": 3, "sand": 2, "silver": 2, "wood": 2}, "top": []},
+	"rainbow": {"name": "Rainbow Gravel", "style": "pebbles",
+		"tones": {"red": 2, "amber": 2, "lemon": 2, "leaf": 2, "sky": 2, "cyan": 1, "orchid": 2, "white": 1, "neon_pink": 1}, "top": []},
+	"jade": {"name": "Jade Pebbles", "style": "pebbles",
+		"tones": {"leaf": 2, "moss": 3, "pine": 2, "cyan": 1, "silver": 1}, "top": []},
+}
 const BAYER4 := [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]]
 
 
@@ -53,30 +81,61 @@ static func water(size: Vector2i) -> Image:
 	return img
 
 
-static func gravel(size: Vector2i) -> Image:
+static func gravel(size: Vector2i, substrate := "gravel") -> Image:
+	var spec: Dictionary = SUBSTRATES.get(substrate, SUBSTRATES.gravel)
 	var img := Image.create_empty(size.x, size.y, false, Image.FORMAT_RGBA8)
 	var base := gravel_top(size)
-	var total := 0
-	for w in GRAVEL_WEIGHTS:
-		total += w
 	for x in size.x:
 		var top := base + roundi(2.0 * sin(x / 13.0) + sin(x / 5.0))
 		for y in range(top, size.y):
-			var r := _hash(x, y)
 			var tone: String
-			if y == top:
-				tone = "cream" if r < 0.5 else "sand"
-			elif y > size.y - 4:
-				tone = "bark" if r < 0.5 else "wood"
-			else:
-				var pick := int(r * total)
-				for i in GRAVEL_TONES.size():
-					pick -= GRAVEL_WEIGHTS[i]
-					if pick < 0:
-						tone = GRAVEL_TONES[i]
-						break
+			match spec.style:
+				"pebbles":
+					tone = _pebble(spec, x, y)
+				"sand":
+					# Fine grains with soft ripples.
+					var ripple := sin(x / 4.0 + y * 1.3) > 0.55
+					tone = _pick(spec.tones, _hash(x, y))
+					if ripple and _hash(y, x) < 0.6:
+						tone = spec.top[0]
+					elif y == top:
+						tone = spec.top[0] if _hash(x, y) < 0.5 else spec.top[1]
+				_:
+					tone = _pick(spec.tones, _hash(x, y))
+					if y == top:
+						tone = spec.top[0] if _hash(x, y) < 0.5 else spec.top[1]
+			if y > size.y - 4 and spec.style != "pebbles":
+				tone = DARKER.get(tone, tone)  # depth against the glass bottom
 			img.set_pixel(x, y, C[tone])
 	return img
+
+
+## Stones laid in staggered 3x2 cells; the bottom and right edge of each stone is a shade darker,
+## and some get a 1px highlight, so they read as individual rounded pebbles.
+static func _pebble(spec: Dictionary, x: int, y: int) -> String:
+	var row := y / 2
+	var shifted := x + (row % 2) * 2
+	var cell_x := shifted / 3
+	var tone := _pick(spec.tones, _hash(cell_x * 7 + 3, row * 13 + 1))
+	var in_x := shifted % 3
+	var in_y := y % 2
+	if in_x == 2 or in_y == 1:
+		return DARKER.get(tone, tone)
+	if in_x == 0 and in_y == 0 and _hash(cell_x, row) < 0.35:
+		return "white" if tone in ["silver", "white", "cyan", "lemon"] else tone
+	return tone
+
+
+static func _pick(weights: Dictionary, r: float) -> String:
+	var total := 0.0
+	for k in weights:
+		total += weights[k]
+	var pick := r * total
+	for k in weights:
+		pick -= weights[k]
+		if pick < 0.0:
+			return k
+	return weights.keys()[-1]
 
 
 ## Glass edges and rim. In decorate mode the rim turns gold so the mode is obvious.

@@ -31,6 +31,14 @@ GLASS = {"outline": "navy", "shadow": "navy", "mid": "deep_blue", "light": "sky"
 SHELL = {"outline": "tan", "shadow": "peach", "mid": "cream", "light": "white", "highlight": "white"}
 STRIPE = {"outline": "tan", "shadow": "salmon", "mid": "salmon", "light": "peach", "highlight": "peach"}
 SANDSTONE = {"outline": "bark", "shadow": "wood", "mid": "tan", "light": "sand", "highlight": "cream"}
+DARKWOOD = {"outline": "umber", "shadow": "umber", "mid": "bark", "light": "wood", "highlight": "tan"}
+TERRACOTTA = {"outline": "bark", "shadow": "rust", "mid": "clay", "light": "sand", "highlight": "peach"}
+CORAL = {"outline": "plum", "shadow": "orchid", "mid": "salmon", "light": "peach", "highlight": "cream"}
+AMETHYST = {"outline": "navy", "shadow": "plum", "mid": "orchid", "light": "salmon", "highlight": "white"}
+LAVA = {"outline": "umber", "shadow": "umber", "mid": "bark", "light": "rust", "highlight": "clay"}
+STARFISH = {"outline": "rust", "shadow": "clay", "mid": "orange", "light": "amber", "highlight": "lemon"}
+CLAM = {"outline": "dusk", "shadow": "slate", "mid": "steel", "light": "silver", "highlight": "white"}
+HULL = {"outline": "umber", "shadow": "bark", "mid": "wood", "light": "tan", "highlight": "peach"}
 
 
 def render_solid(rows, ramps, textures=None):
@@ -243,6 +251,185 @@ def sword_plant():
     return img
 
 
+# --- Procedural helpers for the v0.3 pieces ------------------------------------------------
+
+def grid_rows(grid):
+    return ["".join(r) for r in grid]
+
+
+def stamp_disc(grid, cx, cy, r, ch):
+    for y in range(int(cy - r - 1), int(cy + r + 2)):
+        for x in range(int(cx - r - 1), int(cx + r + 2)):
+            if 0 <= y < len(grid) and 0 <= x < len(grid[0]) and (x - cx) ** 2 + (y - cy) ** 2 <= r * r:
+                grid[y][x] = ch
+
+
+def branches(w, h, seed, ch, trunk=2.2, tip_blob=0.0, spread=0.55, levels=4):
+    """Tree-like growth from the bottom centre: driftwood ("spider wood") and coral."""
+    rnd = random.Random(seed)
+    grid = [["."] * w for _ in range(h)]
+
+    def grow(x, y, ang, length, thick, level):
+        steps = int(length)
+        for i in range(steps):
+            x += math.sin(ang)
+            y -= math.cos(ang)
+            ang += rnd.uniform(-0.12, 0.12)
+            stamp_disc(grid, x, y, max(0.6, thick * (1 - 0.5 * i / steps)), ch)
+        if tip_blob:
+            stamp_disc(grid, x, y, tip_blob, ch)
+        if level < levels:
+            for side in (-1, 1):
+                if level <= 2 or rnd.random() < 0.8:  # main limbs always fork; twigs are random
+                    grow(x, y, ang + side * rnd.uniform(0.25, spread), length * rnd.uniform(0.55, 0.75),
+                         thick * 0.7, level + 1)
+
+    grow(w / 2, h - 1, rnd.uniform(-0.15, 0.15), h * 0.38, trunk, 1)
+    return grid_rows(grid)
+
+
+def leafy(w, h, leaves, colours, rib="pine", edge="pine"):
+    """Leaves as lens shapes from a base point: (angle deg, length, width, colour index)."""
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    base = (w // 2, h - 1)
+    for ang, length, width, ci in leaves:
+        a = math.radians(ang)
+        ux, uy = math.sin(a), -math.cos(a)
+        for y in range(h):
+            for x in range(w):
+                rx, ry = x - base[0], y - base[1]
+                t = rx * ux + ry * uy
+                sd = rx * -uy + ry * ux
+                if 2 <= t <= length:
+                    half = width * math.sin(math.pi * min(1.0, (t - 2) / (length - 2)))
+                    if abs(sd) <= half:
+                        on_edge = abs(sd) > half - 1
+                        c = rib if abs(sd) < 0.5 else (edge if on_edge else colours[ci][0 if sd < 0 else 1])
+                        img.putpixel((x, y), rgba(c))
+        for t in range(0, 3):  # short stem
+            img.putpixel((base[0] + round(ux * t), base[1] + round(uy * t)), rgba(rib))
+    return img
+
+
+def stem_plant(h, seed):
+    """Red ludwigia: a stem with pairs of red/orange leaves, redder toward the top."""
+    rnd = random.Random(seed)
+    w = 13
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    cx = w // 2
+    for y in range(h):
+        img.putpixel((cx, y), rgba("moss" if y > h * 0.4 else "rust"))
+    for y in range(h - 3, 1, -3):
+        top = 1 - y / h
+        light, dark = (("salmon", "red") if top > 0.6 else ("orange", "rust") if top > 0.3 else ("leaf", "moss"))
+        for side in (-1, 1):
+            length = rnd.randint(3, 5)
+            for i in range(1, length + 1):
+                lx = cx + side * i
+                ly = y - (1 if i > 2 else 0)
+                if 0 <= lx < w:
+                    img.putpixel((lx, ly), rgba(dark if i == length else light))
+                    if i < length and ly + 1 < h:
+                        img.putpixel((lx, ly + 1), rgba(dark))
+    return img
+
+
+def pitted_dome(w, h, seed, ramp, pits=8):
+    rows = [list(r) for r in dome_rows(w, h, "r", bumps=0.12, seed=seed)]
+    rnd = random.Random(seed)
+    for _ in range(pits):
+        x, y = rnd.randrange(2, w - 2), rnd.randrange(h // 3, h - 1)
+        if rows[y][x] == "r" and rows[y - 1][x] == "r":
+            rows[y][x] = "p"
+    return render_solid(grid_rows(rows), {"r": ramp, "p": "ink"})
+
+
+LOG = [
+    "....wwwwwwwwwwwwwwwwwwwwwwwwwwww....",
+    "..wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwRR..",
+    ".wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwRddR.",
+    "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwRddddR",
+    "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwRddddR",
+    "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwRddddR",
+    ".wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwRddR.",
+    "..wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwRR..",
+    "....wwwwwwwwwwwwwwwwwwwwwwwwwwww....",
+]
+
+POT = [
+    ".....tttttttttttt.....",
+    "...tttttttttttttttRR..",
+    "..ttttttttttttttttRdR.",
+    ".tttttttttttttttttRddR",
+    "ttttttttttttttttttRddR",
+    "ttttttttttttttttttRddR",
+    "ttttttttttttttttttRddR",
+    "ttttttttttttttttttRddR",
+    ".tttttttttttttttttRddR",
+    "..ttttttttttttttttRdR.",
+    "...tttttttttttttttRR..",
+    ".....tttttttttttt.....",
+]
+
+SHIP = [
+    "........................mm................",
+    "........................mmSS..............",
+    "........................mmSSS.............",
+    "........................mmSSSS............",
+    "........................mmSSS.............",
+    "........................mmSS..............",
+    "...rrrrrrr..............mm................",
+    "...rrprrpr..............mm................",
+    "..hhhhhhhhh.............mm.............hh.",
+    "..hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh.",
+    "..hhhphhhhhhphhhhhhphhhhhhhphhhhhhhhhhhh..",
+    "...hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh..",
+    "....hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh...",
+    ".....hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh....",
+    "......hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh.....",
+    ".......hhhhhhhhhhhhhhhhhhhhhhhhhhhhh......",
+]
+
+CLAM_ART = [
+    "...ccccccccc...",
+    ".ccccccccccccc.",
+    "ccccccccccccccc",
+    "cccccccccccccc.",
+    ".dddddwwddddd..",
+    "cccccccccccccc.",
+    "ccccccccccccccc",
+    ".ccccccccccccc.",
+]
+
+CRYSTALS = [
+    "..........a...........",
+    ".........aaa..........",
+    ".........aaa..........",
+    "....a....aaa.....a....",
+    "...aaa...aaa....aaa...",
+    "...aaa..aaaaa...aaa...",
+    "...aaa..aaaaa...aaa.a.",
+    ".a.aaa..aaaaa..aaaaaaa",
+    "aaaaaa.aaaaaaa.aaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaa",
+    "aaaaaaaaaaaaaaaaaaaaaa",
+    ".rrrrrrrrrrrrrrrrrrrr.",
+    "..rrrrrrrrrrrrrrrrrr..",
+]
+
+STAR = [
+    ".....s.....",
+    ".....s.....",
+    "....sss....",
+    "sssssssssss",
+    ".sssssssss.",
+    "..sssssss..",
+    "..sss.sss..",
+    ".sss...sss.",
+    ".ss.....ss.",
+]
+
+
 def ribbon(height, lean, ramp):
     canvas = Image.new("RGBA", (scene.W, scene.H), (0, 0, 0, 0))
     scene.plant(canvas, scene.W // 2, height, lean, ramp)
@@ -266,6 +453,27 @@ def build():
         "diver": render_solid(DIVER, {"h": BRASS, "g": GLASS, "s": CANVAS, "k": "dusk"}),
         "shell": render_solid(SHELL_ART, {"s": SHELL, "q": STRIPE}),
         "air_stone": render_solid(AIR_STONE, {"a": STONE}),
+        # v0.3
+        "spiderwood": render_solid(branches(34, 40, seed=11, ch="w", trunk=3.2, spread=0.7, levels=4),
+                                   {"w": DARKWOOD}, {"w": lambda x, y: (x * 5 + y * 3) % 9 == 0}),
+        "driftwood_log": render_solid(LOG, {"w": WOOD, "R": SANDSTONE, "d": "umber"},
+                                      {"w": lambda x, y: y % 3 == 1 and (x * 7) % 5 != 0}),
+        "terracotta_pot": render_solid(POT, {"t": TERRACOTTA, "R": SANDSTONE, "d": "umber"},
+                                       {"t": lambda x, y: x % 6 == 5}),
+        "anubias": leafy(22, 16, [(-62, 11, 3.2, 0), (-30, 14, 3.6, 0), (5, 15, 3.8, 0), (35, 13, 3.4, 0), (65, 10, 3.0, 0)],
+                         [("moss", "pine")], rib="abyss_green", edge="abyss_green"),
+        "java_fern": leafy(20, 28, [(-28, 22, 2.4, 0), (-10, 27, 2.6, 0), (12, 25, 2.5, 0), (30, 20, 2.3, 0), (-45, 14, 2.0, 0)],
+                           [("moss", "pine")], rib="pine", edge="abyss_green"),
+        "red_ludwigia": stem_plant(36, seed=4),
+        "sunken_ship": render_solid(SHIP, {"h": HULL, "r": DARKWOOD, "m": DARKWOOD, "S": CANVAS, "p": "ink"},
+                                    {"h": lambda x, y: y % 2 == 0 and x % 7 == 3}),
+        "bubble_clam": render_solid(CLAM_ART, {"c": CLAM, "d": "umber", "w": "white"},
+                                    {"c": lambda x, y: x % 3 == 0}),
+        "coral": render_solid(branches(28, 26, seed=5, ch="c", trunk=2.6, tip_blob=2.0, spread=0.9, levels=4),
+                              {"c": CORAL}),
+        "crystals": render_solid(CRYSTALS, {"a": AMETHYST, "r": STONE}),
+        "lava_rock": pitted_dome(22, 11, seed=9, ramp=LAVA),
+        "starfish": render_solid(STAR, {"s": STARFISH}, {"s": lambda x, y: (x + y) % 4 == 0}),
     }
     os.makedirs(OUT, exist_ok=True)
     for name, img in items.items():
@@ -274,7 +482,7 @@ def build():
 
 
 def sheet(items, scale=5, pad=4):
-    cols = 5
+    cols = 7
     cell_w = max(i.width for i in items.values()) + pad * 2
     cell_h = max(i.height for i in items.values()) + pad * 2
     rows = -(-len(items) // cols)

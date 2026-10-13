@@ -4,7 +4,7 @@ A tiny pixel-art aquarium that lives on your desktop. It floats above your windo
 
 ![Tank](docs/screenshots/tank.png)
 
-**Version:** 0.2.3 (prototype), set in `project.godot` → `application/config/version`.
+**Version:** 0.3.0 (prototype), set in `project.godot` → `application/config/version`.
 
 ## Installing (macOS)
 
@@ -29,15 +29,22 @@ You can also open the folder in the Godot editor and press **Play**.
 | Right-click the tank | Opens the menu |
 | Menu bar / tray icon | The same menu: version, show/hide tank, feed, decorate mode, mute, always on top, settings, quit |
 
-**Settings** has four tabs:
+**Settings** is a themed window, crisp on Retina and HiDPI screens and resizable, with four tabs:
 - **Fish:** add or remove fish, rename them, and see how full each one is, plus stocking against the tank's capacity.
-- **Decor:** add from the catalogue, flip or remove placed pieces, reset to the starter layout, and toggle decorate mode.
+- **Decor:** decorate mode, the **floor** (7 substrates), a catalogue of 26 decorations in three groups, and the list of placed pieces (flip, remove, reset).
 - **Tank:** size (presets or width × height), zoom 2×–5×, performance (Smooth 30 / Balanced 20 / Battery saver 12 fps), bubble volume, mute, always on top, open at login, recentre, and start a new tank.
 - **About:** version and where the save data lives.
 
 **Species (7):** neon tetra, goldfish, betta, guppy, corydoras, angelfish and cherry shrimp, with 15 colour variants in all. Corydoras forage on the bottom and dart up for air. Shrimp walk the gravel.
 
-**Decorations (14):** three ribbon plants, Amazon sword, moss ball, boulder, pebbles, rock arch, driftwood, castle, treasure chest and diver (both release bursts of bubbles), conch shell, and an air stone (a constant stream of bubbles).
+**Floors (7):** natural gravel, fine sand, coral sand, black sand, river pebbles, rainbow gravel and jade pebbles.
+
+**Decorations (26):**
+- **Plants:** tall and regular ribbon plants, hairgrass, Amazon sword, anubias, java fern, red ludwigia, moss ball.
+- **Rocks & wood:** boulder, pebbles, lava rock, amethyst, rock arch, driftwood, hollow log, spider wood.
+- **Ornaments:** castle, sunken ship, treasure chest, diver, clay pot cave, bubbling clam, pink coral, conch shell, starfish, air stone.
+
+The ship, chest, diver and clam release bursts of bubbles; the air stone gives a steady stream.
 
 ## Layout
 
@@ -46,7 +53,7 @@ project.godot          window: borderless, transparent, always-on-top, 192x120 s
 scenes/main.tscn       entry point
 scripts/
   main.gd              the tank: layers, input (feed/drag/resize/decorate/menu), window management
-  tank_renderer.gd     draws water, gravel and glass for any tank size
+  tank_renderer.gd     draws water, glass and the floor (7 substrates) for any tank size
   decor_layer.gd       decorations on the gravel: placement, hit-testing, bubble emitters
   decor_db.gd          decoration catalogue + starter layout
   fish.gd              fish behaviour: wander, school, avoid crowding, chase food
@@ -54,7 +61,8 @@ scripts/
   tank_state.gd        autoload: settings, fish, decor, tank size; saves to user://tank.json
   species_db.gd        species data (speed, depth, stocking, variants)
   tray.gd              menu bar / tray icon + right-click menu
-  settings_window.gd   native settings window
+  settings_window.gd   native settings window (HiDPI-aware, card layout)
+  ui_theme.gd          its theme: tank palette, type sizes, buttons, tabs
   tank_audio.gd        bubbler loop + pops
   login_item.gd        open at login (macOS LaunchAgent / Windows Run key)
 native/macos_agent/    tiny GDExtension: menu-bar-only mode + "is the tank visible?" for macOS

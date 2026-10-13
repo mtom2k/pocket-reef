@@ -81,7 +81,20 @@ Small fish are drawn slightly larger than true scale so they stay readable. Fish
 - Drawn by `tools/spritegen/decor.py` with the same rules: light from above, coloured outlines, and a shadow tone wherever one part sits on top of another (roofs on towers, gold bands on the chest).
 - **Textures:** bricks on stone and planks on wood come from simple per-pixel patterns, not hand-placed pixels, so pieces can be resized consistently.
 - **Placement:** pieces sit on the gravel, sunk 1–3 px into it, and taller pieces draw behind shorter ones. Plants sway using the same shader idea as the fish wobble.
-- **Bubble makers:** the air stone gives a steady stream; the chest and diver give an occasional burst.
+- **Bubble makers:** the air stone gives a steady stream; the chest, diver, sunken ship and clam give an occasional burst.
+- **Procedural pieces:** spider wood and coral grow from a seeded branching routine, and anubias and java fern are lens-shaped leaves fanned from a base.
+- **Floors** (`scripts/tank_renderer.gd`), in three styles:
+  - *Speckle:* mixed grains (natural gravel, black sand).
+  - *Sand:* fine grains with soft ripples (fine sand, coral sand).
+  - *Pebbles:* staggered 3×2 stones with a darker bottom and right edge and an occasional highlight (river, rainbow, jade).
+
+  All floors are hash-based, so resizing the tank never reshuffles them.
+
+## 10b. Settings window
+
+- **Same palette as the tank:** navy background, dusk cards, sky-blue accent, salmon for warnings, leaf green for "full".
+- **Type:** 15 px body, 17 px section titles, 22 px window title, 13 px hints. These are logical pixels, doubled on Retina.
+- **HiDPI:** the window uses the `canvas_items` content scale with the screen's scale factor, so text is crisp, and resizing reflows the layout instead of zooming it.
 
 ## 11. Colour variants (morphs)
 

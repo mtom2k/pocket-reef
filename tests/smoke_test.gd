@@ -79,6 +79,7 @@ func _run() -> void:
 	await _frames(30)
 	_check("bubbles are flowing", _tank._bubble_layer.count() > 0)
 
+	var behind := await _water_behind_tank()
 	var tank_on_screen := await _screen_water_fraction()
 	TankState.set_setting("tank_visible", false)
 	await get_tree().create_timer(0.5).timeout
@@ -88,8 +89,9 @@ func _run() -> void:
 	_check("hidden tank stops drawing (macOS)", OS.get_name() != "macOS" or not RenderingServer.render_loop_enabled)
 	if tank_on_screen >= 0.0:
 		var after := await _screen_water_fraction()
-		_check("hidden tank really disappears from the screen (water %.0f%% -> %.0f%%)"
-			% [tank_on_screen * 100, after * 100], tank_on_screen > 0.2 and after < tank_on_screen * 0.2)
+		_check("hidden tank really disappears from the screen (water %.0f%% -> %.0f%%, %.0f%% is whatever is behind it)"
+			% [tank_on_screen * 100, after * 100, behind * 100],
+			tank_on_screen > behind + 0.15 and after <= behind + 0.05)
 	_tank._tray._menus[0].about_to_popup.emit()
 	await _frames(1)
 	_check("menu open while hidden: loop speeds up", Engine.max_fps == _tank.MENU_FPS)
@@ -160,8 +162,10 @@ func _run() -> void:
 		win.position = home
 		await get_tree().create_timer(2.0).timeout
 		var shown := await _screen_water_fraction()
+		var behind_now := await _water_behind_tank()
 		if shown >= 0.0:
-			_check("hidden-while-covered tank stays off the screen (water %.0f%%)" % (shown * 100), shown < 0.1)
+			_check("hidden-while-covered tank stays off the screen (water %.0f%%, %.0f%% behind it)"
+				% [shown * 100, behind_now * 100], shown <= behind_now + 0.05)
 		TankState.set_setting("tank_visible", true)
 		await get_tree().create_timer(0.5).timeout
 
@@ -215,6 +219,37 @@ func _run() -> void:
 	_check("decor limit enforced", too_many != "")
 	TankState.reset_decor()
 	_check("reset restores starter layout", TankState.decor.size() == DecorDB.DEFAULT_LAYOUT.size())
+
+	# Every decoration in the catalogue spawns, sits on the gravel and can be removed
+	TankState.decor.clear()
+	TankState.decor_changed.emit()
+	var placed_ok := true
+	for type in DecorDB.DECOR:
+		TankState.add_decor(type, 0.5)
+		await _frames(1)
+		var id: int = TankState.decor[-1].id
+		var rect: Rect2 = _tank._decor.item_rect(id)
+		placed_ok = placed_ok and rect.size.x > 0 and absf(rect.end.y - (_tank.floor_y() + DecorDB.DECOR[type].sink)) < 0.01
+		TankState.remove_decor(id)
+	_check("all %d decorations spawn on the gravel" % DecorDB.DECOR.size(), placed_ok)
+	var categorised := []
+	for category in DecorDB.CATEGORIES:
+		categorised.append_array(category[1])
+	_check("every decoration is in a catalogue category", categorised.size() == DecorDB.DECOR.size()
+		and DecorDB.DECOR.keys().all(func(k): return k in categorised))
+	TankState.reset_decor()
+
+	# Floors
+	var floors_ok := true
+	var previous: Color = _tank._gravel.texture.get_image().get_pixel(10, _tank.tank_size.y - 8)
+	for key in TankRenderer.SUBSTRATES:
+		TankState.set_setting("substrate", key)
+		await _frames(1)
+		floors_ok = floors_ok and _tank._substrate == key
+	_check("every floor type can be chosen (%d)" % TankRenderer.SUBSTRATES.size(), floors_ok)
+	_check("floor change redraws the gravel",
+		_tank._gravel.texture.get_image().get_pixel(10, _tank.tank_size.y - 8) != previous)
+	TankState.set_setting("substrate", "gravel")
 
 	# Decorate mode
 	_tank._tray._on_item(Tray.Item.DECORATE)
@@ -277,6 +312,12 @@ func _run() -> void:
 	_tank._open_settings()
 	await _frames(5)
 	_check("settings window opens", _tank._settings.visible)
+	var ui: float = _tank._settings.ui_scale()
+	_check("settings window is sized for this screen (%.0fx)" % ui,
+		_tank._settings.size.x >= _tank._settings.LOGICAL_SIZE.x * ui - 2
+		and _tank._settings.content_scale_mode == Window.CONTENT_SCALE_MODE_CANVAS_ITEMS)
+	_check("settings text renders at %dpx on screen" % int(UITheme.FONT_SIZE * ui),
+		absf(_tank._settings.size.x / float(_tank._settings.content_scale_size.x) - ui) < 0.05)
 	_tank._settings.hide()
 
 	TankState.save()
@@ -284,6 +325,7 @@ func _run() -> void:
 	_check("save records app version", saved.app_version == TankState.version())
 	_check("save records decor", saved.decor.size() == TankState.decor.size())
 	_check("save records tank size", int(saved.settings.tank_width) == TankState.DEFAULT_TANK.x)
+	_check("save records the floor", saved.settings.substrate == "gravel")
 
 	TankState.add_fish("guppy", "default", 2)
 	TankState.set_tank_size(TankState.MIN_TANK)
@@ -312,14 +354,29 @@ func _check(what: String, ok: bool) -> void:
 		_failures += 1
 
 
+## Same measurement for whatever is *behind* the tank (another Fishtank, a blue wallpaper...):
+## the test window steps aside for a moment so the real screen can be captured.
+func _water_behind_tank() -> float:
+	var win := get_window()
+	var home := win.position
+	win.position = Vector2i(-20000, -20000)
+	await get_tree().create_timer(0.6).timeout
+	var f := await _screen_water_fraction(Rect2i(home, win.size))
+	win.position = home
+	await get_tree().create_timer(0.6).timeout
+	return maxf(f, 0.0)
+
+
 ## Fraction of the tank window's screen area that is water-coloured, from a real screen
 ## capture (what the user sees, not what Godot thinks it drew). -1 if capture isn't possible.
-func _screen_water_fraction() -> float:
+func _screen_water_fraction(area := Rect2i()) -> float:
 	if OS.get_name() != "macOS":
 		return -1.0
 	var win := get_window()
+	if area == Rect2i():
+		area = Rect2i(win.position, win.size)
 	var k := DisplayServer.screen_get_scale()
-	var rect := "%d,%d,%d,%d" % [win.position.x / k, win.position.y / k, win.size.x / k, win.size.y / k]
+	var rect := "%d,%d,%d,%d" % [area.position.x / k, area.position.y / k, area.size.x / k, area.size.y / k]
 	var path := OS.get_cache_dir().path_join("fishtank_smoke_capture.png")
 	OS.execute("screencapture", ["-x", "-R", rect, path])
 	var img := Image.load_from_file(path)

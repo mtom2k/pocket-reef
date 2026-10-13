@@ -8,7 +8,7 @@
 
 | Thing | Rule |
 |---|---|
-| Standard tank | **192 × 120 px** internal resolution (Nano 128 × 80, Large 256 × 144 later) |
+| Tank | **Resizable**, in 8 px steps, from **96 × 72** to **256 × 144** (presets: Nano 96×72, Small 128×88, Standard 192×120, Large 256×144). The water surface is always at y = 10 and the gravel is always 16 px deep. |
 | Display | Integer scaling only (2×–5×, user-selectable), nearest-neighbour filtering |
 | Positions | Fish may move at sub-pixel speed internally, but always **render snapped to whole pixels** |
 | Facing | All sprites are drawn **facing right**; facing left is a horizontal flip |
@@ -33,9 +33,9 @@ Small fish are drawn slightly larger than true scale so they stay readable. Fish
 
 | Class | Size | Example |
 |---|---|---|
-| Small | 12–16 × 5–8 | Neon tetra 16 × 7 |
-| Medium | 24–32 × 16–24 | Goldfish 30 × 21, Betta 30 × 23 |
-| Large | 32–40 × 20–32 | Angelfish, oscar (future) |
+| Tiny | ≤ 18 × 6 | Cherry shrimp 18 × 6 |
+| Small | 12–18 × 5–11 | Neon tetra 16 × 7, Corydoras 15 × 8, Guppy 17 × 11 (a big tail is the point) |
+| Medium | 24–32 × 16–27 | Goldfish 30 × 21, Betta 30 × 23, Angelfish 22 × 27 (tall) |
 
 ## 4. Lighting & shading
 
@@ -76,11 +76,18 @@ Small fish are drawn slightly larger than true scale so they stay readable. Fish
 - **Gravel:** noisy mix of the sand tones, a lighter top edge, darker toward the glass bottom.
 - **Overlay mode:** the tank needs a **glass frame plus a dark rim** so it reads as an object on any wallpaper. The air gap above the water is a faint glass tint, so the desktop shows through.
 
-## 10. Colour variants (morphs)
+## 10. Decorations
+
+- Drawn by `tools/spritegen/decor.py` with the same rules: light from above, coloured outlines, and a shadow tone wherever one part sits on top of another (roofs on towers, gold bands on the chest).
+- **Textures:** bricks on stone and planks on wood come from simple per-pixel patterns, not hand-placed pixels, so pieces can be resized consistently.
+- **Placement:** pieces sit on the gravel, sunk 1–3 px into it, and taller pieces draw behind shorter ones. Plants sway using the same shader idea as the fish wobble.
+- **Bubble makers:** the air stone gives a steady stream; the chest and diver give an occasional burst.
+
+## 11. Colour variants (morphs)
 
 A morph reuses a species' silhouette with a different colour ramp (see the `variants` in `tools/spritegen/species.py`). Current examples: goldfish **default / calico**, betta **red / royal blue**. This makes "collect colour morphs" an inexpensive feature to add.
 
-## 11. Pipeline
+## 12. Pipeline
 
 ```
 tools/spritegen/
@@ -88,7 +95,9 @@ tools/spritegen/
   render.py    silhouette → shaded, outlined sprite (all shading rules live here)
   species.py   ASCII silhouettes, fin roots, colour variants
   build.py     → art/sprites/fish/*.png, art/previews/fish_sheet.png
-  scene.py     → art/previews/tank_preview.png, tank_swim.gif
+  decor.py     → art/decor/*.png, art/previews/decor_sheet.png
+  scene.py     → art/previews/tank_preview.png, tank_swim.gif (mock-ups only)
+  export_godot.py  everything the game uses (fish, decor, bubbles, icons)
 ```
 
 ```bash

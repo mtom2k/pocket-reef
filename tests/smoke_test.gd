@@ -19,7 +19,6 @@ func _ready() -> void:
 		return
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(TankState.save_path))
 	TankState.load_state()
-	TankState.roster_changed.emit()
 
 	_tank = Main.instantiate()
 	add_child(_tank)
@@ -32,28 +31,55 @@ func _ready() -> void:
 
 func _run() -> void:
 	var win := get_window()
-	_check("default roster has 8 fish", TankState.fish.size() == 8)
-	_check("one Fish node per roster entry", _tank.fish_nodes().size() == TankState.fish.size())
 
+	# New tank
+	_check("new tank starts with one fish", TankState.fish.size() == 1)
+	_check("...and it's a goldfish", TankState.fish[0].species == "goldfish")
+	_check("one Fish node per roster entry", _tank.fish_nodes().size() == TankState.fish.size())
+	_check("starter decorations placed", _tank._decor.get_child_count() == DecorDB.DEFAULT_LAYOUT.size())
+	_check("air stone emits bubbles", _tank._decor.emitters().size() == 1)
+
+	# Zoom
 	for s in [2, 4, 3]:
 		TankState.set_setting("scale", s)
 		await _frames(3)
-		_check("scale %d resizes window" % s, win.size == _tank.TANK_SIZE * _tank._pixel_scale())
+		_check("zoom %d resizes window" % s, win.size == _tank.tank_size * _tank._pixel_scale())
 
+	# Tank size
+	TankState.set_tank_size(Vector2i(10, 10))
+	await _frames(3)
+	_check("tank can't shrink below minimum", _tank.tank_size == TankState.MIN_TANK)
+	_check("window follows tank size", win.size == TankState.MIN_TANK * _tank._pixel_scale())
+	_check("viewport follows tank size", win.content_scale_size == TankState.MIN_TANK)
+	_check("water redrawn at new size", _tank._water.texture.get_size() == Vector2(TankState.MIN_TANK))
+	_check("capacity shrinks with the tank", TankState.capacity() < TankState.BASE_CAPACITY)
+	_check("nano tank refuses an angelfish (overstock)", TankState.add_fish("angelfish", "default") != "")
+	await _frames(20)
+	var inside := true
+	for f: Fish in _tank.fish_nodes():
+		inside = inside and Rect2(Vector2.ZERO, Vector2(_tank.tank_size)).has_point(f.position)
+	_check("fish stay inside the shrunken tank", inside)
+	TankState.set_tank_size(Vector2i(999, 999))
+	await _frames(3)
+	_check("tank can't grow past maximum", _tank.tank_size == TankState.MAX_TANK)
+	TankState.set_tank_size(Vector2i(133, 101))
+	_check("sizes snap to %d px" % TankState.SIZE_STEP, TankState.tank_size() == Vector2i(136, 104))
+	TankState.set_tank_size(TankState.DEFAULT_TANK)
+	await _frames(3)
+
+	# Visibility, on-top, audio
 	TankState.set_setting("tank_visible", false)
 	await _frames(3)
 	_check("hide tank", not _tank.visible and win.mouse_passthrough)
 	TankState.set_setting("tank_visible", true)
 	await _frames(3)
 	_check("show tank", _tank.visible and not win.mouse_passthrough)
-
 	TankState.set_setting("always_on_top", false)
 	await _frames(2)
 	_check("always-on-top off", not win.always_on_top)
 	TankState.set_setting("always_on_top", true)
 	await _frames(2)
 	_check("always-on-top on", win.always_on_top)
-
 	TankState.set_setting("muted", true)
 	await _frames(2)
 	_check("mute stops bubbler", not _tank._audio._loop_player.playing)
@@ -61,34 +87,167 @@ func _run() -> void:
 	await _frames(2)
 	_check("unmute restarts bubbler", _tank._audio._loop_player.playing)
 
+	# Species
+	_check("guppies added", TankState.add_fish("guppy", "red", 3) == "")
+	_check("corydoras added", TankState.add_fish("corydoras", "albino", 2) == "")
+	_check("shrimp added", TankState.add_fish("cherry_shrimp", "blue", 3) == "")
+	_check("angelfish added", TankState.add_fish("angelfish", "gold") == "")
+	_check("betta added", TankState.add_fish("betta", "default") == "")
 	_check("second betta refused", TankState.add_fish("betta", "royal_blue") == "Only one betta per tank.")
-	_check("overstock refused", TankState.add_fish("goldfish", "default", 3) != "")
-	_check("calico goldfish added", TankState.add_fish("goldfish", "calico") == "")
+	await _frames(60)
+	_check("every species spawned", _tank.fish_nodes().size() == TankState.fish.size())
+	var on_floor := true
+	for f: Fish in _tank.fish_nodes():
+		if f.spec.habit == "crawl":
+			on_floor = on_floor and absf(f.exact_pos.y + f._half.y - 1.0 - _tank.floor_y()) < 0.01
+	_check("shrimp walk on the gravel", on_floor)
+	for f in TankState.fish.duplicate():
+		if f.species != "goldfish":
+			TankState.remove_fish(f.id)
 	await _frames(3)
-	_check("new fish spawned", _tank.fish_nodes().size() == 9)
-	TankState.remove_fish(TankState.fish[-1].id)
-	await _frames(3)
-	_check("removed fish despawned", _tank.fish_nodes().size() == 8)
+	_check("removed fish despawned", _tank.fish_nodes().size() == 1)
 
+	# Decorations
+	_check("castle added", TankState.add_decor("castle", 0.5) == "")
+	_check("chest added", TankState.add_decor("treasure_chest", 0.2) == "")
+	await _frames(2)
+	_check("decor layer shows them", _tank._decor.get_child_count() == DecorDB.DEFAULT_LAYOUT.size() + 2)
+	_check("chest is a bubble emitter", _tank._decor.emitters().size() == 2)
+	var castle_id: int = TankState.decor.filter(func(d): return d.type == "castle")[0].id
+	var r: Rect2 = _tank._decor.item_rect(castle_id)
+	_check("castle sits on the gravel", absf(r.end.y - (_tank.floor_y() + DecorDB.DECOR.castle.sink)) < 0.01)
+	_check("castle hit-test", _tank._decor.item_at(r.get_center()) == castle_id)
+	TankState.move_decor(castle_id, 0.8)
+	await _frames(2)
+	_check("castle moved", absf(_tank._decor.item_rect(castle_id).get_center().x - 0.8 * _tank.tank_size.x) <= 1.0)
+	TankState.set_tank_size(TankState.MIN_TANK)
+	await _frames(3)
+	var trimmed := true
+	for i in _tank._decor.get_child_count():
+		var s: Sprite2D = _tank._decor.get_child(i)
+		trimmed = trimmed and s.position.y >= TankRenderer.WATER_TOP
+	_check("tall plants trimmed to the water in a small tank", trimmed)
+	TankState.set_tank_size(TankState.DEFAULT_TANK)
+	TankState.remove_decor(castle_id)
+	await _frames(2)
+	_check("castle removed", _tank._decor.item_at(r.get_center()) != castle_id)
+	var too_many := ""
+	for i in DecorDB.MAX_ITEMS:
+		too_many = TankState.add_decor("shell")
+	_check("decor limit enforced", too_many != "")
+	TankState.reset_decor()
+	_check("reset restores starter layout", TankState.decor.size() == DecorDB.DEFAULT_LAYOUT.size())
+
+	# Decorate mode
+	_tank._tray._on_item(Tray.Item.DECORATE)
+	await _frames(2)
+	_check("menu toggles decorate mode", TankState.decorating)
+	_check("frame turns gold in decorate mode",
+		_tank._frame.texture.get_image().get_pixel(0, 0).is_equal_approx(Color("feae34")))
+	TankState.set_decorating(false)
+
+	# Pointer interactions (simulated mouse input)
+	var feed_before: int = _tank._food_layer.get_child_count()
+	await _click(Vector2(60, 50))
+	_check("clicking the water drops food", _tank._food_layer.get_child_count() > feed_before)
+
+	TankState.add_decor("castle", 0.5)  # clear of the starter pieces
+	TankState.set_decorating(true)
+	await _frames(2)
+	var cid: int = TankState.decor[-1].id
+	var start: Vector2 = _tank._decor.item_rect(cid).get_center()
+	await _mouse(start, MOUSE_BUTTON_LEFT, true)
+	await _move(start + Vector2(40, 0))
+	await _mouse(start + Vector2(40, 0), MOUSE_BUTTON_LEFT, false)
+	var moved_to: float = TankState.decor[-1].x * _tank.tank_size.x
+	_check("dragging a decoration moves it", absf(moved_to - (start.x + 40)) <= 1.5)
+	var at: Vector2 = _tank._decor.item_rect(cid).get_center()
+	await _mouse(at, MOUSE_BUTTON_LEFT, true, true)
+	await _mouse(at, MOUSE_BUTTON_LEFT, false)
+	_check("double-clicking a decoration flips it", TankState.decor[-1].flip)
+	await _mouse(at, MOUSE_BUTTON_RIGHT, true)
+	await _mouse(at, MOUSE_BUTTON_RIGHT, false)
+	_check("right-clicking a decoration removes it", TankState.decor.filter(func(d): return d.id == cid).is_empty())
+	TankState.set_decorating(false)
+
+	var corner := Vector2(_tank.tank_size) - Vector2(2, 2)
+	await _mouse(corner, MOUSE_BUTTON_LEFT, true)
+	await _move(corner - Vector2(60, 30))
+	await _mouse(corner - Vector2(60, 30), MOUSE_BUTTON_LEFT, false)
+	_check("dragging the corner resizes the tank", TankState.tank_size() == Vector2i(136, 88))
+	await _mouse(Vector2(_tank.tank_size) - Vector2(2, 2), MOUSE_BUTTON_LEFT, true)
+	await _move(Vector2(-200, -200))
+	await _mouse(Vector2(-200, -200), MOUSE_BUTTON_LEFT, false)
+	_check("corner drag stops at the minimum size", TankState.tank_size() == TankState.MIN_TANK)
+	TankState.set_tank_size(TankState.DEFAULT_TANK)
+	await _frames(3)
+
+	# Menu, settings, save
 	_tank._tray._on_item(Tray.Item.FEED)
 	await _frames(2)
 	_check("menu feed drops food", _tank._food_layer.get_child_count() > 0)
-
 	_tank._open_settings()
 	await _frames(5)
 	_check("settings window opens", _tank._settings.visible)
 	_tank._settings.hide()
 
 	TankState.save()
-	_check("save file written", FileAccess.file_exists(TankState.save_path))
 	var saved: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(TankState.save_path))
 	_check("save records app version", saved.app_version == TankState.version())
+	_check("save records decor", saved.decor.size() == TankState.decor.size())
+	_check("save records tank size", int(saved.settings.tank_width) == TankState.DEFAULT_TANK.x)
+
+	TankState.add_fish("guppy", "default", 2)
+	TankState.set_tank_size(TankState.MIN_TANK)
+	TankState.new_tank()
+	await _frames(3)
+	_check("new tank: one goldfish", TankState.fish.size() == 1 and TankState.fish[0].species == "goldfish")
+	_check("new tank: standard size", _tank.tank_size == TankState.DEFAULT_TANK)
+	_check("new tank: starter decor", _tank._decor.get_child_count() == DecorDB.DEFAULT_LAYOUT.size())
+
+	# Format 1 saves (v0.1.0) migrate: fish kept, starter decor added.
+	var old := FileAccess.open(TankState.save_path, FileAccess.WRITE)
+	old.store_string(JSON.stringify({"format": 1, "saved_at": Time.get_unix_time_from_system(),
+		"settings": {"scale": 3}, "next_id": 3,
+		"fish": [{"id": 1, "species": "betta", "variant": "default", "name": "Fig", "hunger": 0.2},
+			{"id": 2, "species": "neon_tetra", "variant": "default", "name": "Pip", "hunger": 0.2}]}))
+	old.close()
+	TankState.load_state()
+	_check("v0.1 save keeps its fish", TankState.fish.size() == 2)
+	_check("v0.1 save gets starter decor", TankState.decor.size() == DecorDB.DEFAULT_LAYOUT.size())
+	_check("v0.1 save gets default tank size", TankState.tank_size() == TankState.DEFAULT_TANK)
 
 
 func _check(what: String, ok: bool) -> void:
 	print("%s  %s" % ["PASS" if ok else "FAIL", what])
 	if not ok:
 		_failures += 1
+
+
+## Mouse events in tank pixels, converted to window pixels like real OS events.
+func _mouse(p: Vector2, button: MouseButton, pressed: bool, double := false) -> void:
+	var e := InputEventMouseButton.new()
+	e.button_index = button
+	e.pressed = pressed
+	e.double_click = double
+	e.position = p * _tank._pixel_scale()
+	e.global_position = e.position
+	Input.parse_input_event(e)
+	await _frames(2)
+
+
+func _move(p: Vector2) -> void:
+	var e := InputEventMouseMotion.new()
+	e.position = p * _tank._pixel_scale()
+	e.global_position = e.position
+	e.button_mask = MOUSE_BUTTON_MASK_LEFT
+	Input.parse_input_event(e)
+	await _frames(2)
+
+
+func _click(p: Vector2) -> void:
+	await _mouse(p, MOUSE_BUTTON_LEFT, true)
+	await _mouse(p, MOUSE_BUTTON_LEFT, false)
 
 
 func _frames(n: int) -> void:

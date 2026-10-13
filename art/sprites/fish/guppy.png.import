@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dq7863w5cxfv"
-path="res://.godot/imported/gravel.png-dc9049be087443095760924267d8ec7f.ctex"
+uid="uid://bic7ntwdie8h8"
+path="res://.godot/imported/guppy.png-7867582fb47937cfcaf476a194e62d2b.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/tank/gravel.png"
-dest_files=["res://.godot/imported/gravel.png-dc9049be087443095760924267d8ec7f.ctex"]
+source_file="res://art/sprites/fish/guppy.png"
+dest_files=["res://.godot/imported/guppy.png-7867582fb47937cfcaf476a194e62d2b.ctex"]
 
 [params]
 

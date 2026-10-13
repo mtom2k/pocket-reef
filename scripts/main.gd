@@ -1,8 +1,9 @@
 extends Node2D
 ## The tank: a borderless, transparent, always-on-top window you can drag around the desktop.
 ##
-## Click the water to drop food, drag to move the tank, right-click for the menu.
-## The tray / menu bar icon has the same menu.
+## Click the water to drop food, drag to move the tank, drag the bottom-right corner to resize,
+## right-click for the menu. In decorate mode, drag decorations to move them, double-click to
+## flip, right-click to remove, Esc to finish. The tray / menu bar icon has the same menu.
 ##
 ## Debug: `godot --path . -- --screenshot=/tmp/tank.png` saves a frame after 3 s and quits.
 ## Add `--debug-feed` to drop food, `--debug-settings[=tab]` to open (and capture) the settings window.
@@ -10,34 +11,41 @@ extends Node2D
 const SettingsWindow := preload("res://scripts/settings_window.gd")
 const TankAudio := preload("res://scripts/tank_audio.gd")
 const Tray := preload("res://scripts/tray.gd")
-const SWAY_SHADER := preload("res://shaders/sway.gdshader")
+const DecorLayer := preload("res://scripts/decor_layer.gd")
 const BUBBLE_SMALL := preload("res://art/sprites/fx/bubble_small.png")
 const BUBBLE_BIG := preload("res://art/sprites/fx/bubble_big.png")
 
-const TANK_SIZE := Vector2i(192, 120)
-const WATER_TOP := 10
-const GRAVEL_TOP := 104
-const BUBBLER_X := 182
 const DRAG_THRESHOLD := 4.0
-const PLANTS := [  # texture, base x, sway amplitude
-	["res://art/tank/plant_tall.png", 22, 2.0],
-	["res://art/tank/plant_short.png", 120, 1.0],
-	["res://art/tank/plant_medium.png", 172, 2.0],
-]
+const GRIP_SIZE := 8  # bottom-right resize handle, in tank pixels
 
+var tank_size := TankState.DEFAULT_TANK
+
+var _water: Sprite2D
+var _gravel: Sprite2D
+var _frame: Sprite2D
+var _decor: Node2D
 var _fish_layer: Node2D
 var _food_layer: Node2D
 var _bubble_layer: Node2D
+var _overlay: Node2D
 var _audio: Node
 var _tray: Node
 var _settings: Window
 var _school_targets := {}
 var _school_timer := 0.0
-var _bubble_timer := 0.0
-var _press_screen := Vector2i.ZERO
-var _pressing := false
+var _emit_timers := {}  # decor id -> seconds until next bubble(s)
 var _last_window_pos := Vector2i.ZERO
 var _screenshot_path := ""
+
+# Pointer state
+var _press_screen := Vector2i.ZERO
+var _pressing := false
+var _resizing := false
+var _resize_grab := Vector2.ZERO  # tank corner minus pointer, so the corner tracks the pointer
+var _dragging_decor := -1
+var _drag_offset := 0.0
+var _hover_decor := -1
+var _hover_grip := false
 
 
 func _ready() -> void:
@@ -50,12 +58,14 @@ func _ready() -> void:
 	_tray.quit_requested.connect(_quit)
 
 	TankState.roster_changed.connect(_sync_fish)
+	TankState.decor_changed.connect(func(): _decor.sync(tank_size))
+	TankState.decorate_mode_changed.connect(_on_decorate_mode)
 	TankState.settings_changed.connect(_apply_window_settings)
-	TankState.feed_requested.connect(func(): feed_at(randf_range(20, TANK_SIZE.x - 20), 4))
+	TankState.feed_requested.connect(func(): feed_at(randf_range(20, tank_size.x - 20), 4))
 	TankState.settings_window_requested.connect(_open_settings)
 
-	_sync_fish()
 	_apply_window_settings()
+	_sync_fish()
 	get_window().close_requested.connect(_quit)
 	LoginItem.refresh()
 
@@ -64,7 +74,7 @@ func _ready() -> void:
 			_screenshot_path = arg.trim_prefix("--screenshot=")
 			get_tree().create_timer(3.0).timeout.connect(_take_screenshot)
 		elif arg == "--debug-feed":
-			get_tree().create_timer(0.5).timeout.connect(feed_at.bind(96.0, 8))
+			get_tree().create_timer(0.5).timeout.connect(func(): feed_at(tank_size.x / 2.0, 8))
 		elif arg.begins_with("--debug-settings"):
 			_open_settings.call_deferred()
 			if "=" in arg:
@@ -79,11 +89,9 @@ func _process(delta: float) -> void:
 			if SpeciesDB.SPECIES[species].schooling:
 				_school_targets[species] = random_point_in_band(SpeciesDB.SPECIES[species].depth)
 
-	_bubble_timer -= delta
-	if _bubble_timer <= 0.0:
-		_bubble_timer = randf_range(0.2, 0.55)
-		_spawn_bubble()
+	_run_emitters(delta)
 	_move_bubbles(delta)
+	_update_hover()
 
 	# Native window drags don't report back, so persist the position when it changes.
 	var pos := get_window().position
@@ -96,35 +104,43 @@ func _process(delta: float) -> void:
 # --- Scene ----------------------------------------------------------------
 
 func _build_layers() -> void:
-	_add_sprite("res://art/tank/water.png")
-	for p in PLANTS:
-		var mat := ShaderMaterial.new()
-		mat.shader = SWAY_SHADER
-		mat.set_shader_parameter("amplitude", p[2])
-		mat.set_shader_parameter("seed", randf() * TAU)
-		var pad := Vector2i(3, 0)
-		var tex := SpeciesDB.padded_texture(p[0], pad)
-		var s := Sprite2D.new()
-		s.texture = tex
-		s.centered = false
-		s.material = mat
-		s.position = Vector2(p[1] - tex.get_width() / 2, GRAVEL_TOP + 3 - tex.get_height())
-		add_child(s)
-	_add_sprite("res://art/tank/gravel.png")
+	_water = _layer_sprite()
+	_decor = DecorLayer.new()
+	add_child(_decor)
+	_gravel = _layer_sprite()
 	_fish_layer = Node2D.new()
 	add_child(_fish_layer)
 	_food_layer = Node2D.new()
 	add_child(_food_layer)
 	_bubble_layer = Node2D.new()
 	add_child(_bubble_layer)
-	_add_sprite("res://art/tank/frame.png")
+	_frame = _layer_sprite()
+	_overlay = Node2D.new()
+	_overlay.draw.connect(_draw_overlay)
+	add_child(_overlay)
 
 
-func _add_sprite(path: String) -> void:
+func _layer_sprite() -> Sprite2D:
 	var s := Sprite2D.new()
-	s.texture = load(path)
 	s.centered = false
 	add_child(s)
+	return s
+
+
+func _rebuild_tank() -> void:
+	_water.texture = ImageTexture.create_from_image(TankRenderer.water(tank_size))
+	_gravel.texture = ImageTexture.create_from_image(TankRenderer.gravel(tank_size))
+	_rebuild_frame()
+	_decor.sync(tank_size)
+	# Keep food inside a shrunken tank.
+	for food: Food in _food_layer.get_children():
+		food.floor_y = minf(food.floor_y, floor_y() + 1.0)
+		food.exact_pos = food.exact_pos.clamp(Vector2(2, water_top() + 1), Vector2(tank_size.x - 3, food.floor_y))
+	_overlay.queue_redraw()
+
+
+func _rebuild_frame() -> void:
+	_frame.texture = ImageTexture.create_from_image(TankRenderer.frame(tank_size, TankState.decorating))
 
 
 func _sync_fish() -> void:
@@ -149,15 +165,24 @@ func fish_nodes() -> Array[Node]:
 	return _fish_layer.get_children().filter(func(n): return not n.is_queued_for_deletion())
 
 
+func water_top() -> float:
+	return float(TankRenderer.WATER_TOP)
+
+
+func floor_y() -> float:
+	return float(TankRenderer.gravel_top(tank_size))
+
+
 func clamp_to_water(p: Vector2, half: Vector2) -> Vector2:
-	return Vector2(
-		clampf(p.x, 2 + half.x, TANK_SIZE.x - 2 - half.x),
-		clampf(p.y, WATER_TOP + 3 + half.y, GRAVEL_TOP - 1 - half.y * 0.5))
+	var lo := Vector2(2 + half.x, water_top() + 3 + half.y)
+	var hi := Vector2(tank_size.x - 2 - half.x, floor_y() - 1 - half.y * 0.5)
+	return p.clamp(lo, hi.max(lo))
 
 
 func random_point_in_band(band: Vector2) -> Vector2:
-	var depth := float(GRAVEL_TOP - WATER_TOP)
-	return Vector2(randf_range(14, TANK_SIZE.x - 14), WATER_TOP + depth * randf_range(band.x, band.y))
+	var depth := floor_y() - water_top()
+	var margin := minf(14.0, tank_size.x / 6.0)
+	return Vector2(randf_range(margin, tank_size.x - margin), water_top() + depth * randf_range(band.x, band.y))
 
 
 func school_target(species: String) -> Vector2:
@@ -166,11 +191,14 @@ func school_target(species: String) -> Vector2:
 	return _school_targets[species]
 
 
-func nearest_food(from: Vector2, max_distance: float) -> Node2D:
+## Nearest food within `max_distance`; `on_floor_only` is for crawlers that can't swim up to it.
+func nearest_food(from: Vector2, max_distance: float, on_floor_only := false) -> Node2D:
 	var best: Node2D = null
 	var best_d := max_distance
 	for food: Node2D in _food_layer.get_children():
 		if food.is_queued_for_deletion():
+			continue
+		if on_floor_only and food.position.y < floor_y() - 6.0:
 			continue
 		var d := from.distance_to(food.position)
 		if d < best_d:
@@ -188,16 +216,34 @@ func eat(food: Node2D) -> void:
 func feed_at(x: float, flakes: int) -> void:
 	for i in flakes:
 		var food := Food.new()
-		food.position = Vector2(clampf(x + randf_range(-6, 6), 4, TANK_SIZE.x - 4), WATER_TOP + 1)
-		food.floor_y = GRAVEL_TOP + randf_range(-1, 2)
+		food.position = Vector2(clampf(x + randf_range(-6, 6), 4, tank_size.x - 4), water_top() + 1)
+		food.floor_y = floor_y() + randf_range(-1, 2)
 		_food_layer.add_child(food)
 
 
-func _spawn_bubble() -> void:
-	var big := randf() < 0.25
+func _run_emitters(delta: float) -> void:
+	var alive := {}
+	for e in _decor.emitters():
+		alive[e.id] = true
+		var t: float = _emit_timers.get(e.id, randf_range(0.0, 3.0)) - delta
+		if t <= 0.0:
+			if e.mode == "stream":
+				_spawn_bubble(e.position, randf() < 0.25)
+				t = randf_range(0.2, 0.55)
+			else:  # burst: a little gush every so often
+				for i in randi_range(4, 8):
+					_spawn_bubble(e.position + Vector2(randf_range(-2, 2), i * 3), randf() < 0.4)
+				t = randf_range(6.0, 14.0)
+		_emit_timers[e.id] = t
+	for id in _emit_timers.keys():
+		if not alive.has(id):
+			_emit_timers.erase(id)
+
+
+func _spawn_bubble(at: Vector2, big: bool) -> void:
 	var b := Sprite2D.new()
 	b.texture = BUBBLE_BIG if big else BUBBLE_SMALL
-	b.set_meta("exact", Vector2(BUBBLER_X + randf_range(-1, 1), GRAVEL_TOP - 4))
+	b.set_meta("exact", at + Vector2(randf_range(-1, 1), 0))
 	b.set_meta("wobble", randf() * TAU)
 	b.set_meta("big", big)
 	_bubble_layer.add_child(b)
@@ -211,31 +257,115 @@ func _move_bubbles(delta: float) -> void:
 		b.set_meta("exact", p)
 		b.set_meta("wobble", w)
 		b.position = p.round()
-		if p.y < WATER_TOP + 2:
+		if p.y < water_top() + 2:
 			if b.get_meta("big") and randf() < 0.35:
 				_audio.pop()
 			b.queue_free()
 
 
-# --- Input: click to feed, drag to move, right-click for menu --------------------
+# --- Input ----------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		var mb := event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_LEFT:
-			if mb.pressed:
-				_pressing = true
-				_press_screen = DisplayServer.mouse_get_position()
-			elif _pressing:
-				_pressing = false
-				if mb.position.y > WATER_TOP and mb.position.y < GRAVEL_TOP:
-					feed_at(mb.position.x, 4)
-		elif mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+		TankState.set_decorating(false)
+	elif event is InputEventMouseButton:
+		_on_mouse_button(event)
+	elif event is InputEventMouseMotion:
+		_on_mouse_motion(event)
+
+
+func _on_mouse_button(mb: InputEventMouseButton) -> void:
+	var p := mb.position
+	if mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
+		var id: int = _decor.item_at(p) if TankState.decorating else -1
+		if id >= 0:
+			TankState.remove_decor(id)
+		else:
 			_tray.show_context_menu(DisplayServer.mouse_get_position())
-	elif event is InputEventMouseMotion and _pressing:
+		return
+	if mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+
+	if mb.pressed:
+		_press_screen = DisplayServer.mouse_get_position()
+		var id: int = _decor.item_at(p) if TankState.decorating else -1
+		if _in_grip(p):
+			_resizing = true
+			_resize_grab = Vector2(tank_size) - p
+		elif id >= 0 and mb.double_click:
+			TankState.flip_decor(id)
+		elif id >= 0:
+			_dragging_decor = id
+			_drag_offset = p.x - _decor.item_rect(id).get_center().x
+		else:
+			_pressing = true
+		return
+
+	# Release
+	if _resizing:
+		_resizing = false
+	elif _dragging_decor >= 0:
+		TankState.move_decor(_dragging_decor, (p.x - _drag_offset) / tank_size.x)
+		_dragging_decor = -1
+	elif _pressing:
+		_pressing = false
+		if not TankState.decorating and p.y > water_top() and p.y < floor_y():
+			feed_at(p.x, 4)
+
+
+func _on_mouse_motion(mm: InputEventMouseMotion) -> void:
+	if _resizing:
+		# The window's top-left stays put while resizing, so the pointer position gives the size.
+		TankState.set_tank_size(Vector2i((mm.position + _resize_grab).round()))
+	elif _dragging_decor >= 0:
+		_decor.preview_move(_dragging_decor, (mm.position.x - _drag_offset) / tank_size.x)
+		_overlay.queue_redraw()
+	elif _pressing:
 		if Vector2(DisplayServer.mouse_get_position() - _press_screen).length() > DRAG_THRESHOLD:
 			_pressing = false
 			get_window().start_drag()
+
+
+func _in_grip(p: Vector2) -> bool:
+	return p.x >= tank_size.x - GRIP_SIZE and p.y >= tank_size.y - GRIP_SIZE
+
+
+func _update_hover() -> void:
+	var p := get_viewport().get_mouse_position()
+	var inside := Rect2(Vector2.ZERO, Vector2(tank_size)).has_point(p)
+	var grip := inside and (_in_grip(p) or _resizing)
+	var deco: int = _decor.item_at(p) if inside and TankState.decorating else -1
+	if _dragging_decor >= 0:
+		deco = _dragging_decor
+	if grip != _hover_grip or deco != _hover_decor:
+		_hover_grip = grip
+		_hover_decor = deco
+		_overlay.queue_redraw()
+		var shape := Input.CURSOR_ARROW
+		if grip:
+			shape = Input.CURSOR_FDIAGSIZE
+		elif deco >= 0:
+			shape = Input.CURSOR_DRAG if _dragging_decor >= 0 else Input.CURSOR_MOVE
+		Input.set_default_cursor_shape(shape)
+
+
+func _draw_overlay() -> void:
+	var amber := Color("feae34")
+	if TankState.decorating and _hover_decor >= 0:
+		var r: Rect2 = _decor.item_rect(_hover_decor).grow(1)
+		_overlay.draw_rect(r, Color(amber, 0.9), false, 1.0)
+	if _hover_grip or TankState.decorating:
+		# Three diagonal pixel steps, like a window's resize corner.
+		var c := Color("c0cbdc") if not TankState.decorating else amber
+		for i in 3:
+			for j in range(i + 1):
+				_overlay.draw_rect(Rect2(tank_size.x - 3 - j * 2, tank_size.y - 3 - (i - j) * 2, 1, 1), c)
+
+
+func _on_decorate_mode() -> void:
+	_rebuild_frame()
+	_hover_decor = -1
+	_overlay.queue_redraw()
 
 
 # --- Window -------------------------------------------------------------------
@@ -250,7 +380,13 @@ func _apply_window_settings() -> void:
 	var win := get_window()
 	var s := TankState.settings
 	win.always_on_top = s.always_on_top
-	var new_size := TANK_SIZE * _pixel_scale()
+
+	var new_tank := TankState.tank_size()
+	if new_tank != tank_size or _water.texture == null:
+		tank_size = new_tank
+		win.content_scale_size = tank_size
+		_rebuild_tank()
+	var new_size := tank_size * _pixel_scale()
 	if win.size != new_size:
 		win.size = new_size
 

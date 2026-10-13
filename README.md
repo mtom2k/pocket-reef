@@ -2,9 +2,9 @@
 
 A tiny pixel-art aquarium that lives on your desktop. It floats above your windows, bubbles quietly in the background, and lives in the menu bar (macOS) or system tray (Windows).
 
-![Tank](docs/screenshots/tank_feeding.png)
+![Tank](docs/screenshots/tank.png)
 
-**Version:** 0.1.0 (prototype), set in `project.godot` → `application/config/version`.
+**Version:** 0.2.0 (prototype), set in `project.godot` → `application/config/version`.
 
 ## Installing (macOS)
 
@@ -24,13 +24,20 @@ You can also open the folder in the Godot editor and press **Play**.
 |---|---|
 | Click the water | Drops food; hungry fish race for it |
 | Drag the tank | Moves it anywhere on screen (the position is remembered) |
+| Drag the bottom-right corner | Resizes the tank (smallest 96×72, largest 256×144 tank pixels) |
+| **Decorate mode** (menu or Settings → Decor) | The glass turns gold. Drag decorations to move them, double-click to flip, right-click to remove, Esc to finish |
 | Right-click the tank | Opens the menu |
-| Menu bar / tray icon | The same menu: version, show/hide tank, feed, mute, always on top, settings, quit |
+| Menu bar / tray icon | The same menu: version, show/hide tank, feed, decorate mode, mute, always on top, settings, quit |
 
-**Settings** has three tabs:
-- **Fish:** add or remove fish, rename them, and see how full each one is, plus overall tank stocking.
-- **Tank:** size 2×–5×, bubble volume, mute, always on top, **open at login**, and recentring the tank.
+**Settings** has four tabs:
+- **Fish:** add or remove fish, rename them, and see how full each one is, plus stocking against the tank's capacity.
+- **Decor:** add from the catalogue, flip or remove placed pieces, reset to the starter layout, and toggle decorate mode.
+- **Tank:** size (presets or width × height), zoom 2×–5×, bubble volume, mute, always on top, open at login, recentre, and start a new tank.
 - **About:** version and where the save data lives.
+
+**Species (7):** neon tetra, goldfish, betta, guppy, corydoras, angelfish and cherry shrimp, with 15 colour variants in all. Corydoras forage on the bottom and dart up for air. Shrimp walk the gravel.
+
+**Decorations (14):** three ribbon plants, Amazon sword, moss ball, boulder, pebbles, rock arch, driftwood, castle, treasure chest and diver (both release bursts of bubbles), conch shell, and an air stone (a constant stream of bubbles).
 
 ## Layout
 
@@ -38,10 +45,13 @@ You can also open the folder in the Godot editor and press **Play**.
 project.godot          window: borderless, transparent, always-on-top, 192x120 scaled by whole numbers
 scenes/main.tscn       entry point
 scripts/
-  main.gd              the tank: layers, input (feed/drag/menu), window management
+  main.gd              the tank: layers, input (feed/drag/resize/decorate/menu), window management
+  tank_renderer.gd     draws water, gravel and glass for any tank size
+  decor_layer.gd       decorations on the gravel: placement, hit-testing, bubble emitters
+  decor_db.gd          decoration catalogue + starter layout
   fish.gd              fish behaviour: wander, school, avoid crowding, chase food
   food.gd              sinking food flakes
-  tank_state.gd        autoload: settings + fish roster, saves to user://tank.json
+  tank_state.gd        autoload: settings, fish, decor, tank size; saves to user://tank.json
   species_db.gd        species data (speed, depth, stocking, variants)
   tray.gd              menu bar / tray icon + right-click menu
   settings_window.gd   native settings window
@@ -75,7 +85,7 @@ This needs the Godot 4.7.2 export templates (Editor → Manage Export Templates,
 ## Regenerating assets
 
 ```bash
-uv run --with pillow tools/spritegen/export_godot.py   # fish, tank layers, icons
+uv run --with pillow tools/spritegen/export_godot.py   # fish, decorations, bubbles, icons
 python3 tools/audiogen/bubbles.py                      # bubble sounds
 ```
 
@@ -95,7 +105,10 @@ This boots the real tank and drives every setting and menu path: resize, hide/sh
 ## Design notes
 
 - **Fish never die.** Hunger rises over about 4 hours, including while the app is closed. Starving fish only get sluggish.
-- **Stocking:** the tank holds 24 points (tetra 1, betta 3, goldfish 6). Only one betta per tank, because they fight.
+- **New tanks** start with one goldfish and a starter layout (two ribbon plants, hairgrass, a boulder and an air stone).
+- **Stocking:** a standard tank holds 24 points, and capacity scales with tank area (a nano tank holds 7). Points per fish: shrimp 0; tetra, guppy and corydoras 1; betta 3; angelfish 5; goldfish 6. Only one betta per tank, because they fight. Shrinking an already-full tank is allowed; it just shows "overstocked" and blocks new fish.
+- **Small tanks:** tall plants are trimmed so they just reach the surface.
+- **Save format 2** (v0.2) adds decor and tank size. v0.1 saves are migrated automatically: your fish are kept and the starter decor is added.
 - **Hiding the tank** makes it invisible and click-through, and drops it to 5 fps. Godot can't hide its main window, and this way the bubbling carries on in the background.
 - Runs at 30 fps on the lightweight Compatibility renderer, to be kind to battery life.
 

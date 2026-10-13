@@ -1,10 +1,13 @@
 class_name SpeciesDB
 ## Static species data. Sprites come from tools/spritegen (art/sprites/fish/).
 
+## habit: "swim" (open water), "bottom" (forages near the gravel, dashes up for air now and then),
+##        "crawl" (walks along the gravel, never swims).
 const SPECIES := {
 	"neon_tetra": {
 		"name": "Neon Tetra",
 		"variants": {"default": "Classic"},
+		"habit": "swim",
 		"speed": 20.0,
 		"bioload": 1,
 		"max": 12,
@@ -16,6 +19,7 @@ const SPECIES := {
 	"goldfish": {
 		"name": "Goldfish",
 		"variants": {"default": "Orange", "calico": "Calico"},
+		"habit": "swim",
 		"speed": 12.0,
 		"bioload": 6,
 		"max": 3,
@@ -27,6 +31,7 @@ const SPECIES := {
 	"betta": {
 		"name": "Betta",
 		"variants": {"default": "Red", "royal_blue": "Royal Blue"},
+		"habit": "swim",
 		"speed": 9.0,
 		"bioload": 3,
 		"max": 1,
@@ -34,6 +39,54 @@ const SPECIES := {
 		"schooling": false,
 		"wobble": 0.3,
 		"blurb": "Territorial: only one betta per tank. Likes the surface.",
+	},
+	"guppy": {
+		"name": "Guppy",
+		"variants": {"default": "Rainbow", "blue": "Blue Moscow", "red": "Red Cobra"},
+		"habit": "swim",
+		"speed": 16.0,
+		"bioload": 1,
+		"max": 10,
+		"depth": Vector2(0.1, 0.6),
+		"schooling": false,
+		"wobble": 0.8,
+		"blurb": "Lively and colourful, with a big flowing tail.",
+	},
+	"corydoras": {
+		"name": "Corydoras",
+		"variants": {"default": "Bronze", "albino": "Albino"},
+		"habit": "bottom",
+		"speed": 11.0,
+		"bioload": 1,
+		"max": 8,
+		"depth": Vector2(0.9, 1.0),
+		"schooling": false,
+		"wobble": 0.7,
+		"blurb": "A busy little catfish that hoovers up food from the gravel.",
+	},
+	"angelfish": {
+		"name": "Angelfish",
+		"variants": {"default": "Silver", "gold": "Gold"},
+		"habit": "swim",
+		"speed": 8.0,
+		"bioload": 5,
+		"max": 2,
+		"depth": Vector2(0.2, 0.7),
+		"schooling": false,
+		"wobble": 0.25,
+		"blurb": "Tall and graceful. Needs a tank with some height.",
+	},
+	"cherry_shrimp": {
+		"name": "Cherry Shrimp",
+		"variants": {"default": "Cherry", "blue": "Blue Dream"},
+		"habit": "crawl",
+		"speed": 4.0,
+		"bioload": 0,
+		"max": 10,
+		"depth": Vector2(1.0, 1.0),
+		"schooling": false,
+		"wobble": 0.0,
+		"blurb": "Tiny clean-up crew. Picks at the gravel all day.",
 	},
 }
 

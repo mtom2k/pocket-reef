@@ -1,17 +1,31 @@
 extends Node
-## Autoload: everything the player can change (settings + fish roster), persisted to user://tank.json.
+## Autoload: everything the player can change (settings, fish roster, decorations),
+## persisted to user://tank.json.
 ##
 ## Roster entries are plain Dictionaries shared by reference with the Fish nodes, so hunger
 ## changes made by a fish are saved without extra bookkeeping.
 
 signal settings_changed
 signal roster_changed
+signal decor_changed
+signal decorate_mode_changed
 signal feed_requested
 signal settings_window_requested
 
 const DEFAULT_SAVE_PATH := "user://tank.json"
-const SAVE_FORMAT := 1
-const CAPACITY := 24
+const SAVE_FORMAT := 2
+
+## Tank dimensions in art pixels. Width/height snap to SIZE_STEP.
+const DEFAULT_TANK := Vector2i(192, 120)
+const MIN_TANK := Vector2i(96, 72)
+const MAX_TANK := Vector2i(256, 144)
+const SIZE_STEP := 8
+const SIZE_PRESETS := [
+	["Nano", Vector2i(96, 72)], ["Small", Vector2i(128, 88)],
+	["Standard", Vector2i(192, 120)], ["Large", Vector2i(256, 144)],
+]
+## Stocking points for the standard tank; scales with tank area.
+const BASE_CAPACITY := 24
 ## Full to starving in about four hours, including while the app is closed.
 const HUNGER_PER_SECOND := 0.25 / 3600.0
 
@@ -22,8 +36,13 @@ var settings := {
 	"always_on_top": true,
 	"tank_visible": true,
 	"window_position": [],
+	"tank_width": DEFAULT_TANK.x,
+	"tank_height": DEFAULT_TANK.y,
 }
 var fish: Array[Dictionary] = []
+var decor: Array[Dictionary] = []  # {id, type, x (0..1 of tank width), flip}
+## Not saved: decorate mode always starts off.
+var decorating := false
 
 var save_path := DEFAULT_SAVE_PATH
 var _next_id := 1
@@ -69,6 +88,38 @@ func queue_save() -> void:
 	_save_timer.start()
 
 
+func set_decorating(on: bool) -> void:
+	if decorating != on:
+		decorating = on
+		decorate_mode_changed.emit()
+
+
+# --- Tank size ----------------------------------------------------------------
+
+func tank_size() -> Vector2i:
+	return Vector2i(settings.tank_width, settings.tank_height)
+
+
+func set_tank_size(size: Vector2i) -> void:
+	size = clamp_tank_size(size)
+	if size == tank_size():
+		return
+	settings.tank_width = size.x
+	settings.tank_height = size.y
+	settings_changed.emit()
+	queue_save()
+
+
+func clamp_tank_size(size: Vector2i) -> Vector2i:
+	var snapped := Vector2i(snappedi(size.x, SIZE_STEP), snappedi(size.y, SIZE_STEP))
+	return snapped.clamp(MIN_TANK, MAX_TANK)
+
+
+func capacity() -> int:
+	var area := float(settings.tank_width * settings.tank_height)
+	return maxi(4, roundi(BASE_CAPACITY * area / (DEFAULT_TANK.x * DEFAULT_TANK.y)))
+
+
 # --- Roster -----------------------------------------------------------------
 
 func stocking() -> int:
@@ -88,9 +139,9 @@ func why_cannot_add(species: String, amount := 1) -> String:
 	if count_of(species) + amount > spec.max:
 		if spec.max == 1:
 			return "Only one %s per tank." % spec.name.to_lower()
-		return "At most %d %ss per tank." % [spec.max, spec.name.to_lower()]
-	if stocking() + spec.bioload * amount > CAPACITY:
-		return "Not enough room: the tank would be overstocked."
+		return "At most %d of this species per tank." % spec.max
+	if stocking() + spec.bioload * amount > capacity():
+		return "Not enough room: the tank would be overstocked. Try a bigger tank."
 	return ""
 
 
@@ -100,13 +151,12 @@ func add_fish(species: String, variant: String, amount := 1) -> String:
 		return reason
 	for i in amount:
 		fish.append({
-			"id": _next_id,
+			"id": _take_id(),
 			"species": species,
 			"variant": variant,
 			"name": SpeciesDB.random_name(),
 			"hunger": 0.3,
 		})
-		_next_id += 1
 	roster_changed.emit()
 	queue_save()
 	return ""
@@ -125,11 +175,61 @@ func rename_fish(id: int, new_name: String) -> void:
 			queue_save()
 
 
-func _default_roster() -> void:
+# --- Decorations ----------------------------------------------------------------
+
+func add_decor(type: String, x := -1.0) -> String:
+	if decor.size() >= DecorDB.MAX_ITEMS:
+		return "The tank is full of decorations (max %d)." % DecorDB.MAX_ITEMS
+	decor.append({"id": _take_id(), "type": type, "x": x if x >= 0.0 else randf_range(0.1, 0.9), "flip": false})
+	decor_changed.emit()
+	queue_save()
+	return ""
+
+
+func remove_decor(id: int) -> void:
+	decor = decor.filter(func(d): return d.id != id)
+	decor_changed.emit()
+	queue_save()
+
+
+func move_decor(id: int, x: float) -> void:
+	for d in decor:
+		if d.id == id:
+			d.x = clampf(x, 0.0, 1.0)
+	decor_changed.emit()
+	queue_save()
+
+
+func flip_decor(id: int) -> void:
+	for d in decor:
+		if d.id == id:
+			d.flip = not d.flip
+	decor_changed.emit()
+	queue_save()
+
+
+func reset_decor() -> void:
+	decor.clear()
+	for item in DecorDB.DEFAULT_LAYOUT:
+		decor.append({"id": _take_id(), "type": item[0], "x": item[1], "flip": false})
+	decor_changed.emit()
+	queue_save()
+
+
+func _take_id() -> int:
+	_next_id += 1
+	return _next_id - 1
+
+
+## Starts over: one goldfish, the starter decorations and the standard tank size.
+## Display preferences (zoom, volume, position...) are kept.
+func new_tank() -> void:
 	fish.clear()
+	settings.tank_width = DEFAULT_TANK.x
+	settings.tank_height = DEFAULT_TANK.y
 	add_fish("goldfish", "default")
-	add_fish("betta", "default")
-	add_fish("neon_tetra", "default", 6)
+	reset_decor()
+	settings_changed.emit()
 
 
 # --- Persistence ----------------------------------------------------------
@@ -141,6 +241,7 @@ func save() -> void:
 		"saved_at": Time.get_unix_time_from_system(),
 		"settings": settings,
 		"fish": fish,
+		"decor": decor,
 		"next_id": _next_id,
 	}
 	var file := FileAccess.open(save_path, FileAccess.WRITE)
@@ -152,18 +253,22 @@ func save() -> void:
 
 func load_state() -> void:
 	if not FileAccess.file_exists(save_path):
-		_default_roster()
+		new_tank()
 		return
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(save_path))
 	if typeof(parsed) != TYPE_DICTIONARY:
 		push_warning("Save file unreadable, starting a fresh tank.")
-		_default_roster()
+		new_tank()
 		return
 
 	for key in parsed.get("settings", {}):
 		if settings.has(key):
 			settings[key] = parsed.settings[key]
-	settings.scale = int(settings.scale)
+	for key in ["scale", "tank_width", "tank_height"]:
+		settings[key] = int(settings[key])
+	var size := clamp_tank_size(tank_size())
+	settings.tank_width = size.x
+	settings.tank_height = size.y
 
 	var away: float = maxf(0.0, Time.get_unix_time_from_system() - float(parsed.get("saved_at", 0)))
 	fish.clear()
@@ -178,3 +283,11 @@ func load_state() -> void:
 			"hunger": clampf(float(f.get("hunger", 0.3)) + away * HUNGER_PER_SECOND, 0.0, 1.0),
 		})
 	_next_id = int(parsed.get("next_id", fish.size() + 1))
+
+	decor.clear()
+	if int(parsed.get("format", 1)) < 2:
+		reset_decor()  # format 1 had a fixed layout; give it the same one as editable decor
+	else:
+		for d in parsed.get("decor", []):
+			if DecorDB.DECOR.has(d.get("type", "")):
+				decor.append({"id": int(d.id), "type": d.type, "x": float(d.x), "flip": bool(d.get("flip", false))})

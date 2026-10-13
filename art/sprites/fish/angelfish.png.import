@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://hqrtacya6wpo"
-path="res://.godot/imported/plant_short.png-608e5490fe64e0c7c16a140f85164d75.ctex"
+uid="uid://dl3e6k0e8epf4"
+path="res://.godot/imported/angelfish.png-70bef7d0470f44ee9a2b13b799ecb2a2.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/tank/plant_short.png"
-dest_files=["res://.godot/imported/plant_short.png-608e5490fe64e0c7c16a140f85164d75.ctex"]
+source_file="res://art/sprites/fish/angelfish.png"
+dest_files=["res://.godot/imported/angelfish.png-70bef7d0470f44ee9a2b13b799ecb2a2.ctex"]
 
 [params]
 

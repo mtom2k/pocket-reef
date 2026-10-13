@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://csc1r53mbn6gw"
-path="res://.godot/imported/water.png-0c05df612c2b4ca11b1c2129ff3a1864.ctex"
+uid="uid://c8qtuqbr8r3tn"
+path="res://.godot/imported/angelfish_gold.png-10bceb4e5687698526150f7f0ff05261.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/tank/water.png"
-dest_files=["res://.godot/imported/water.png-0c05df612c2b4ca11b1c2129ff3a1864.ctex"]
+source_file="res://art/sprites/fish/angelfish_gold.png"
+dest_files=["res://.godot/imported/angelfish_gold.png-10bceb4e5687698526150f7f0ff05261.ctex"]
 
 [params]
 

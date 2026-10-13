@@ -1,36 +1,28 @@
-"""Exports the tank as separate layers + icons for the Godot project.
+"""Exports every sprite the Godot project uses.
 
   uv run --with pillow tools/spritegen/export_godot.py
 
 Writes:
-  art/tank/water.png, gravel.png, frame.png     full-tank layers (192x120)
-  art/tank/plant_*.png                           cropped plants (base = bottom centre)
+  art/sprites/fish/*.png                         (build.py)
+  art/decor/*.png                                (decor.py)
   art/sprites/fx/bubble_small.png, bubble_big.png
   art/icons/tray.png (32px), app_icon.png (256px), app_icon_macos.png (1024px, padded)
+
+The water, gravel and glass are drawn at runtime for any tank size (scripts/tank_renderer.gd).
 """
 
-import json
 import os
-import random
 
 from PIL import Image, ImageDraw
 
-import scene
+import decor
 from build import ROOT, build_sprites
 from palette import rgba
 from render import render, upscale
 from species import SPECIES
 
-TANK = os.path.join(ROOT, "art", "tank")
 FX = os.path.join(ROOT, "art", "sprites", "fx")
 ICONS = os.path.join(ROOT, "art", "icons")
-
-PLANTS = {
-    # name: (height, lean, ramp)
-    "plant_tall": (60, 2, ["pine", "moss", "leaf"]),
-    "plant_medium": (48, 3, ["pine", "moss", "leaf"]),
-    "plant_short": (30, 1, ["abyss_green", "pine", "moss"]),
-}
 
 ICON_FISH = [
     "......gg",
@@ -49,34 +41,6 @@ ICON_FISH = [
 
 def blank():
     return Image.new("RGBA", (scene.W, scene.H), (0, 0, 0, 0))
-
-
-def export_layers():
-    os.makedirs(TANK, exist_ok=True)
-    random.seed(7)
-
-    water = blank()
-    scene.water(water)
-    water.save(os.path.join(TANK, "water.png"))
-
-    gravel = blank()
-    scene.gravel(gravel)
-    scene.rock(gravel, 62, 15, 13)
-    gravel.save(os.path.join(TANK, "gravel.png"))
-
-    frame = blank()
-    scene.frame(frame)
-    frame.save(os.path.join(TANK, "frame.png"))
-
-    for name, (height, lean, ramp) in PLANTS.items():
-        canvas = blank()
-        scene.plant(canvas, scene.W // 2, height, lean, ramp)
-        canvas.crop(canvas.getbbox()).save(os.path.join(TANK, f"{name}.png"))
-
-    # Layout constants the game needs, so they live in one place.
-    with open(os.path.join(TANK, "layout.json"), "w") as f:
-        json.dump({"width": scene.W, "height": scene.H, "water_top": scene.WATER_TOP,
-                   "gravel_top": scene.GRAVEL_TOP}, f, indent=2)
 
 
 def export_fx():
@@ -122,7 +86,7 @@ def export_icons():
 
 if __name__ == "__main__":
     build_sprites()
-    export_layers()
+    decor.build()
     export_fx()
     export_icons()
-    print("exported tank layers, fx and icons")
+    print("exported fish, decor, fx and icons")

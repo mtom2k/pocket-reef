@@ -65,6 +65,84 @@ BETTA = [
     ".........ggggg",
 ]
 
+GUPPY = [
+    "fff..............",
+    "fFff.............",
+    "ffFff.....gg.....",
+    "fFfFff..gggbbb...",
+    "ffffFffbbbbbbbbb.",
+    "fFfffffbbbbbbebbb",
+    "ffFfffbBBBBBBBbbm",
+    "fFfFff..BBBBBbb..",
+    "ffFff.....h......",
+    "fFff.............",
+    "fff..............",
+]
+
+CORYDORAS = [
+    "........g......",
+    ".......ggg.....",
+    "ff....gggbbb...",
+    "fff.bbbbbbbbbb.",
+    "ffbbbbbbbbbbbeb",
+    "fffbBBBBBBBBBbb",
+    "ff..BBBBBBBBBm.",
+    ".....h....h....",
+]
+
+
+def _angelfish():
+    rows = [
+        "..........g",
+        ".........gg",
+        "........ggg",
+        ".......gggg",
+        "......ggggg",
+        ".....gggggg",
+        ".....ggggggg",
+        "....gggggggbbb",
+        "....ggggggbbbbbb",
+        "..f..gggggbbbbbbbb",
+        ".fff.ggggbbbbbbbbbb",
+        ".ffffgggbbbbbbbbbewb",
+        ".ffffffbbbbbbbbbbeebb",
+        ".fffffbbbbbbbbbbbbbbbm",
+        ".ffffffbbbbbbbbbbbbbb",
+        ".ffffgggBBBBBBBBBBBB",
+        ".fff.ggggBBBBBBBBBB",
+        "..f..gggggBBBBBBBB",
+        "....ggggggBBBBBB",
+        "....gggggggBhBh",
+        ".....ggggggg.h.h",
+        ".....gggggg..h..h",
+        "......ggggg..h..h",
+        "......gggg...h..h",
+        ".......ggg...h...h",
+        "........gg...h",
+        ".........g",
+    ]
+    # Three dark vertical bars: through the eye, mid-body, and rear body into the fins.
+    grid = [list(r) for r in rows]
+    for x in (8, 9, 13, 14, 19):
+        for y, row in enumerate(grid):
+            if x < len(row) and row[x] in "bB":
+                row[x] = "1"
+            elif x in (8, 9) and x < len(row) and row[x] == "g":
+                row[x] = "F"
+    return ["".join(r) for r in grid]
+
+
+ANGELFISH = _angelfish()
+
+SHRIMP = [
+    ".....bbbbbb.......",
+    "...bbbbbbbbbb..FFF",
+    ".bbbbbbbbbbbbebF..",
+    "fbbbbbbbbbbbbbbm..",
+    "ff..h.h.h.h.h.....",
+    "f...h.h.h.h.h.....",
+]
+
 SPECIES = {
     "neon_tetra": {
         "shape": NEON_TETRA,
@@ -110,6 +188,78 @@ SPECIES = {
                 "body":  {"outline": "ink", "shadow": "navy", "mid": "deep_blue", "light": "sky", "highlight": "cyan"},
                 "belly": {"outline": "ink", "shadow": "deep_blue", "mid": "sky", "light": "sky"},
                 "fin":   {"outline": "orchid", "inner": "deep_blue", "mid": "sky", "ray": "deep_blue", "accent": "orchid"},
+            },
+        },
+    },
+    "guppy": {
+        "shape": GUPPY,
+        "fin_roots": {"f": [(7, 5)], "g": [(10, 3)], "h": [(10, 8)]},
+        "variants": {
+            "default": {
+                "body":  {"outline": "dusk", "shadow": "slate", "mid": "steel", "light": "silver", "highlight": "white"},
+                "belly": {"outline": "dusk", "shadow": "steel", "mid": "silver", "light": "white"},
+                "fin":   {"outline": "clay", "inner": "orange", "mid": "amber", "ray": "orange", "accent": "sky"},
+            },
+            "blue": {
+                "body":  {"outline": "navy", "shadow": "deep_blue", "mid": "sky", "light": "cyan", "highlight": "white"},
+                "belly": {"outline": "navy", "shadow": "steel", "mid": "silver", "light": "white"},
+                "fin":   {"outline": "cyan", "inner": "sky", "mid": "sky", "ray": "cyan", "accent": "white"},
+            },
+            "red": {
+                "body":  {"outline": "crimson", "shadow": "salmon", "mid": "peach", "light": "cream", "highlight": "white"},
+                "belly": {"outline": "crimson", "shadow": "peach", "mid": "cream", "light": "white"},
+                "fin":   {"outline": "crimson", "inner": "crimson", "mid": "red", "ray": "crimson", "accent": "salmon"},
+            },
+        },
+    },
+    "corydoras": {
+        "shape": CORYDORAS,
+        "fin_roots": {"f": [(3, 4)], "g": [(8, 3)], "h": [(7, 7)]},
+        "variants": {
+            "default": {
+                "body":  {"outline": "umber", "shadow": "bark", "mid": "wood", "light": "tan", "highlight": "peach"},
+                "belly": {"outline": "umber", "shadow": "tan", "mid": "peach", "light": "cream"},
+                "fin":   {"outline": ("tan", 200), "mid": ("peach", 140), "ray": ("tan", 180), "accent": ("peach", 160)},
+            },
+            "albino": {
+                "body":  {"outline": "tan", "shadow": "peach", "mid": "cream", "light": "white", "highlight": "white"},
+                "belly": {"outline": "tan", "shadow": "peach", "mid": "cream", "light": "white"},
+                "fin":   {"outline": ("peach", 200), "mid": ("cream", 140), "ray": ("peach", 180), "accent": ("cream", 160)},
+                "eye": "red",
+            },
+        },
+    },
+    "angelfish": {
+        "shape": ANGELFISH,
+        "fin_roots": {"f": [(7, 13)], "g": [(11, 8), (11, 18)], "h": [(13, 19)]},
+        "variants": {
+            "default": {
+                "body":  {"outline": "dusk", "shadow": "steel", "mid": "silver", "light": "white", "highlight": "white"},
+                "belly": {"outline": "dusk", "shadow": "silver", "mid": "white", "light": "white"},
+                "p1":    {"shadow": "ink", "mid": "navy", "light": "dusk"},
+                "fin":   {"outline": ("steel", 220), "inner": ("silver", 200), "mid": ("silver", 150),
+                          "ray": ("steel", 190), "accent": ("navy", 220)},
+            },
+            "gold": {
+                "body":  {"outline": "clay", "shadow": "amber", "mid": "lemon", "light": "cream", "highlight": "white"},
+                "belly": {"outline": "clay", "shadow": "lemon", "mid": "cream", "light": "white"},
+                "p1":    {"shadow": "amber", "mid": "lemon", "light": "lemon"},
+                "fin":   {"outline": ("amber", 220), "inner": ("lemon", 200), "mid": ("cream", 150),
+                          "ray": ("amber", 190), "accent": ("amber", 220)},
+            },
+        },
+    },
+    "cherry_shrimp": {
+        "shape": SHRIMP,
+        "fin_roots": {},
+        "variants": {
+            "default": {
+                "body":  {"outline": "crimson", "shadow": "crimson", "mid": "red", "light": "salmon", "highlight": "peach"},
+                "fin":   {"outline": "crimson", "mid": "red", "accent": ("salmon", 200)},
+            },
+            "blue": {
+                "body":  {"outline": "navy", "shadow": "deep_blue", "mid": "sky", "light": "cyan", "highlight": "white"},
+                "fin":   {"outline": "sky", "mid": "sky", "accent": ("cyan", 200)},
             },
         },
     },

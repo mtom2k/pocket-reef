@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bj3y6j4bgn4t3"
-path="res://.godot/imported/plant_medium.png-d50a99efd29b897ca0b9410e55f679ed.ctex"
+uid="uid://cmcfgum1voauv"
+path="res://.godot/imported/pebbles.png-7f904272a68568d76e77eceb7c459ba4.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/tank/plant_medium.png"
-dest_files=["res://.godot/imported/plant_medium.png-d50a99efd29b897ca0b9410e55f679ed.ctex"]
+source_file="res://art/decor/pebbles.png"
+dest_files=["res://.godot/imported/pebbles.png-7f904272a68568d76e77eceb7c459ba4.ctex"]
 
 [params]
 

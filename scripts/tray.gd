@@ -4,7 +4,7 @@ extends Node
 
 signal quit_requested
 
-enum Item { VERSION, SHOW_TANK, FEED, MUTE, ON_TOP, SETTINGS, QUIT }
+enum Item { VERSION, SHOW_TANK, FEED, MUTE, ON_TOP, SETTINGS, QUIT, DECORATE }
 
 const ICON := preload("res://art/icons/tray.png")
 
@@ -25,6 +25,7 @@ func _ready() -> void:
 		push_warning("No tray/menu bar support on this platform; use right-click on the tank.")
 	_build_menu()  # context menu
 	TankState.settings_changed.connect(_sync_checks)
+	TankState.decorate_mode_changed.connect(_sync_checks)
 	_sync_checks()
 
 
@@ -43,6 +44,7 @@ func _build_menu() -> PopupMenu:
 	menu.add_separator()
 	menu.add_check_item("Show Tank", Item.SHOW_TANK)
 	menu.add_item("Feed Fish", Item.FEED)
+	menu.add_check_item("Decorate Mode", Item.DECORATE)
 	menu.add_check_item("Mute Bubbles", Item.MUTE)
 	menu.add_check_item("Always on Top", Item.ON_TOP)
 	menu.add_separator()
@@ -61,6 +63,7 @@ func _sync_checks() -> void:
 		menu.set_item_checked(menu.get_item_index(Item.SHOW_TANK), s.tank_visible)
 		menu.set_item_checked(menu.get_item_index(Item.MUTE), s.muted)
 		menu.set_item_checked(menu.get_item_index(Item.ON_TOP), s.always_on_top)
+		menu.set_item_checked(menu.get_item_index(Item.DECORATE), TankState.decorating)
 
 
 func _on_item(id: int) -> void:
@@ -70,6 +73,8 @@ func _on_item(id: int) -> void:
 			TankState.set_setting("tank_visible", not s.tank_visible)
 		Item.FEED:
 			TankState.feed_requested.emit()
+		Item.DECORATE:
+			TankState.set_decorating(not TankState.decorating)
 		Item.MUTE:
 			TankState.set_setting("muted", not s.muted)
 		Item.ON_TOP:

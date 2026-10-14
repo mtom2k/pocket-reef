@@ -43,7 +43,7 @@ def sheet(sprites: dict[str, Image.Image], scale: int = 8, pad: int = 4) -> Imag
 if __name__ == "__main__":
     os.makedirs(PREVIEWS, exist_ok=True)
     os.makedirs(os.path.join(ROOT, "art", "palette"), exist_ok=True)
-    write_gpl(os.path.join(ROOT, "art", "palette", "fishtank.gpl"))
+    write_gpl(os.path.join(ROOT, "art", "palette", "pocketreef.gpl"))
     sprites = build_sprites()
     sheet(sprites).save(os.path.join(PREVIEWS, "fish_sheet.png"))
     print("built:", ", ".join(sprites))

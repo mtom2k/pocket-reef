@@ -46,7 +46,7 @@ def rgba(name: str, alpha: int = 255) -> tuple[int, int, int, int]:
 
 def write_gpl(path: str) -> None:
     """GIMP palette, loadable in Aseprite (Palette > Load) and most editors."""
-    lines = ["GIMP Palette", "Name: Fishtank (ENDESGA 32)", "Columns: 8", "#"]
+    lines = ["GIMP Palette", "Name: Pocket Reef (ENDESGA 32)", "Columns: 8", "#"]
     for name, h in PALETTE.items():
         r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
         lines.append(f"{r:3d} {g:3d} {b:3d}\t{name}")

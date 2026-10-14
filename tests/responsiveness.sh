@@ -10,7 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 GODOT="${GODOT:-/Applications/Godot.app/Contents/MacOS/Godot}"
-DATA="$HOME/Library/Application Support/Fishtank"
+DATA="$HOME/Library/Application Support/Pocket Reef"
 SAVE="responsiveness_test.json"
 python3 - "$DATA/$SAVE" <<'PY'
 import json, sys, time

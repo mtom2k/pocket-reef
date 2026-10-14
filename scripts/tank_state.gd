@@ -62,6 +62,9 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--save-file="):  # used by tests to keep the real tank untouched
 			save_path = arg.trim_prefix("--save-file=")
+	if save_path == DEFAULT_SAVE_PATH:
+		var legacy := OS.get_user_data_dir().get_base_dir().path_join("Fishtank").path_join("tank.json")
+		migrate_legacy_save(legacy, ProjectSettings.globalize_path(save_path))
 	_save_timer = Timer.new()
 	_save_timer.one_shot = true
 	_save_timer.wait_time = 1.0
@@ -77,12 +80,21 @@ func _ready() -> void:
 	load_state()
 
 
+## The app was called "Fishtank" up to v0.4 and kept its save in a folder of that name. Copy that
+## tank over once (only if there's no Pocket Reef save yet). Returns true if it copied.
+static func migrate_legacy_save(legacy_path: String, new_path: String) -> bool:
+	if FileAccess.file_exists(new_path) or not FileAccess.file_exists(legacy_path):
+		return false
+	DirAccess.make_dir_recursive_absolute(new_path.get_base_dir())
+	return DirAccess.copy_absolute(legacy_path, new_path) == OK
+
+
 func version() -> String:
 	return ProjectSettings.get_setting("application/config/version", "0.0.0")
 
 
 func app_name() -> String:
-	return ProjectSettings.get_setting("application/config/name", "Fishtank")
+	return ProjectSettings.get_setting("application/config/name", "Pocket Reef")
 
 
 func set_setting(key: String, value: Variant) -> void:

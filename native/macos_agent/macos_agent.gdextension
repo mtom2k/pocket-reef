@@ -1,9 +1,9 @@
 [configuration]
 
-entry_symbol = "fishtank_agent_init"
+entry_symbol = "pocketreef_agent_init"
 compatibility_minimum = "4.1"
 
 [libraries]
 
-macos.debug = "res://native/macos_agent/libfishtank_agent.dylib"
-macos.release = "res://native/macos_agent/libfishtank_agent.dylib"
+macos.debug = "res://native/macos_agent/libpocketreef_agent.dylib"
+macos.release = "res://native/macos_agent/libpocketreef_agent.dylib"

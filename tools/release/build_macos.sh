@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds build/Fishtank-<version>.dmg: exports the .app with Godot, then wraps it in a
+# Builds build/PocketReef-<version>.dmg: exports the .app with Godot, then wraps it in a
 # drag-to-Applications disk image.
 #
 #   tools/release/build_macos.sh
@@ -11,10 +11,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 GODOT="${GODOT:-godot}"
 VERSION="$(sed -n 's/^config\/version="\(.*\)"/\1/p' "$ROOT/project.godot")"
-NAME="Fishtank"
+NAME="Pocket Reef"
 OUT="$ROOT/build"
 APP="$OUT/macos/$NAME.app"
-DMG="$OUT/$NAME-$VERSION.dmg"
+DMG="$OUT/PocketReef-$VERSION.dmg"  # no space: easier to share and script
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 

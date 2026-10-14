@@ -52,7 +52,7 @@ var _window_poll := 0.0
 var _fish_cache: Array[Node] = []
 var _substrate := ""
 var _hidden := false  # the player hid the tank
-var _occluded := false  # macOS says no Fishtank window is visible (covered, other Space, locked...)
+var _occluded := false  # macOS says no Pocket Reef window is visible (covered, other Space, locked...)
 var _occlusion_poll := 0.0
 var _menu_open := false
 var _tick_accum := 0.0
@@ -477,14 +477,14 @@ func _apply_window_settings() -> void:
 	_apply_power_state()
 
 
-## The native plugin (native/macos_agent) sets FISHTANK_OCCLUDED when macOS reports that no
-## Fishtank window can be seen. Elsewhere the variable is never set, so the tank never pauses.
+## The native plugin (native/macos_agent) sets POCKETREEF_OCCLUDED when macOS reports that no
+## Pocket Reef window can be seen. Elsewhere the variable is never set, so the tank never pauses.
 func _poll_occlusion(delta: float) -> void:
 	_occlusion_poll -= delta
 	if _occlusion_poll > 0.0:
 		return
 	_occlusion_poll = OCCLUSION_POLL
-	var occluded := OS.get_environment("FISHTANK_OCCLUDED") == "1"
+	var occluded := OS.get_environment("POCKETREEF_OCCLUDED") == "1"
 	if occluded != _occluded:
 		_occluded = occluded
 		_apply_power_state()

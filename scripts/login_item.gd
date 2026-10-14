@@ -6,7 +6,10 @@ class_name LoginItem
 ## Windows: a value under HKCU\...\CurrentVersion\Run.
 ## Only available in exported builds; from the editor it would register the Godot binary.
 
-const LABEL := "dev.fishtank.app"  # keep in sync with the macOS bundle id in export_presets.cfg
+const LABEL := "com.pocketreef.app"  # keep in sync with the macOS bundle id in export_presets.cfg
+## Before the rename (v0.4 and earlier) the app was "Fishtank".
+const LEGACY_LABEL := "dev.fishtank.app"
+const LEGACY_NAME := "Fishtank"
 const WINDOWS_RUN_KEY := "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
 
 
@@ -17,7 +20,7 @@ static func unavailable_reason() -> String:
 	if not OS.has_feature("template"):
 		return "Available in the installed app (not when running from Godot)."
 	if OS.get_name() == "macOS" and _bundle_path().begins_with("/Volumes/"):
-		return "Move Fishtank to your Applications folder first."
+		return "Move %s to your Applications folder first." % _name()
 	return ""
 
 
@@ -43,14 +46,32 @@ static func set_enabled(enabled: bool) -> String:
 	return ""
 
 
-## Re-registers with the current app location, in case the app was moved since.
+## Re-registers with the current app location, in case the app was moved since, and carries
+## over a login item registered under the old name.
 static func refresh() -> void:
-	if unavailable_reason() == "" and is_enabled():
+	if unavailable_reason() != "":
+		return
+	if _migrate_legacy() or is_enabled():
 		set_enabled(true)
 
 
+## v0.4 and earlier registered as "Fishtank": swap that login item for ours. True if there was one.
+static func _migrate_legacy() -> bool:
+	match OS.get_name():
+		"macOS":
+			var old := OS.get_environment("HOME").path_join("Library/LaunchAgents/%s.plist" % LEGACY_LABEL)
+			if FileAccess.file_exists(old):
+				DirAccess.remove_absolute(old)
+				return true
+		"Windows":
+			if OS.execute("reg", ["query", WINDOWS_RUN_KEY, "/v", LEGACY_NAME]) == 0:
+				OS.execute("reg", ["delete", WINDOWS_RUN_KEY, "/v", LEGACY_NAME, "/f"])
+				return true
+	return false
+
+
 static func _name() -> String:
-	return ProjectSettings.get_setting("application/config/name", "Fishtank")
+	return ProjectSettings.get_setting("application/config/name", "Pocket Reef")
 
 
 # --- macOS ------------------------------------------------------------------
@@ -60,7 +81,7 @@ static func _plist_path() -> String:
 
 
 static func _bundle_path() -> String:
-	# .../Fishtank.app/Contents/MacOS/Fishtank -> .../Fishtank.app
+	# .../Pocket Reef.app/Contents/MacOS/Pocket Reef -> .../Pocket Reef.app
 	return OS.get_executable_path().get_base_dir().get_base_dir().get_base_dir()
 
 

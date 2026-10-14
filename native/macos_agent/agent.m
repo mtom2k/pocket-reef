@@ -1,4 +1,4 @@
-// macOS helpers for Fishtank, loaded as a minimal GDExtension.
+// macOS helpers for Pocket Reef, loaded as a minimal GDExtension.
 //
 // 1. Menu-bar-only mode. Godot forces a regular activation policy at startup (Dock icon +
 //    Cmd-Tab entry), overriding LSUIElement. We switch the app to an "accessory" app once Godot
@@ -6,7 +6,7 @@
 //
 // 2. Occlusion. macOS tells apps when their windows can't be seen (covered, on another Space,
 //    behind a fullscreen app, screen locked or asleep). We publish that as the environment
-//    variable FISHTANK_OCCLUDED ("1" = no Fishtank window is visible, "0" = at least one is),
+//    variable POCKETREEF_OCCLUDED ("1" = no Pocket Reef window is visible, "0" = at least one is),
 //    which main.gd polls; that avoids registering classes through the GDExtension API for one bool.
 //    Only Godot's own windows count: the menu-bar icon lives in a status-bar window that is always
 //    visible.
@@ -31,7 +31,7 @@ typedef struct {
 	void (*deinitialize)(void *userdata, InitLevel level);
 } Initialization;
 
-static NSString *const kBundleId = @"dev.fishtank.app";  // keep in sync with export_presets.cfg
+static NSString *const kBundleId = @"com.pocketreef.app";  // keep in sync with export_presets.cfg
 static NSMutableArray *observers;
 static id no_app_nap;
 
@@ -53,7 +53,7 @@ static void publish_occlusion(void) {
 			break;
 		}
 	}
-	setenv("FISHTANK_OCCLUDED", any_visible ? "0" : "1", 1);
+	setenv("POCKETREEF_OCCLUDED", any_visible ? "0" : "1", 1);
 }
 
 static void watch_occlusion(void) {
@@ -108,7 +108,7 @@ static void deinitialize(void *userdata, InitLevel level) {
 }
 
 __attribute__((visibility("default")))
-uint8_t fishtank_agent_init(void *get_proc_address, void *library, Initialization *init) {
+uint8_t pocketreef_agent_init(void *get_proc_address, void *library, Initialization *init) {
 	init->minimum_initialization_level = LEVEL_SCENE;
 	init->initialize = initialize;
 	init->deinitialize = deinitialize;

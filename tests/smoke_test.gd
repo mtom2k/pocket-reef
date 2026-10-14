@@ -153,18 +153,18 @@ func _run() -> void:
 	_check("unmute restarts bubbler", _tank._audio._loop_player.playing)
 
 	# Covered tank (occlusion). First the logic, with the flag set by hand...
-	OS.set_environment("FISHTANK_OCCLUDED", "1")
+	OS.set_environment("POCKETREEF_OCCLUDED", "1")
 	await get_tree().create_timer(0.6).timeout
 	where = fish0.exact_pos
 	draws = await _draws_per_second(1.0)
 	_check("covered tank pauses fish and draws nothing (%.1f frames/s)" % draws, draws < 0.5 and fish0.exact_pos == where)
 	_check("covered tank still clickable", not win.mouse_passthrough and _tank.visible)
-	OS.set_environment("FISHTANK_OCCLUDED", "0")
+	OS.set_environment("POCKETREEF_OCCLUDED", "0")
 	await get_tree().create_timer(0.6).timeout
 	draws = await _draws_per_second(1.0)
 	_check("uncovered tank resumes (%.1f frames/s)" % draws, draws >= 15.0 and fish0.exact_pos != where)
 	# ...then for real on macOS: a window moved fully off-screen is reported as not visible.
-	if OS.get_name() == "macOS" and OS.has_environment("FISHTANK_OCCLUDED"):
+	if OS.get_name() == "macOS" and OS.has_environment("POCKETREEF_OCCLUDED"):
 		var home := win.position
 		win.position = Vector2i(-20000, -20000)
 		var waited := 0.0
@@ -396,6 +396,21 @@ func _run() -> void:
 	_check("new tank: standard size", _tank.tank_size == TankState.DEFAULT_TANK)
 	_check("new tank: starter decor", _tank._decor.get_child_count() == DecorDB.DEFAULT_LAYOUT.size())
 
+	# Rename: a "Fishtank" save is carried over once, and never overwrites a Pocket Reef save.
+	var tmp := OS.get_cache_dir().path_join("pocketreef_migration_test")
+	DirAccess.make_dir_recursive_absolute(tmp.path_join("Fishtank"))
+	var old_save := tmp.path_join("Fishtank/tank.json")
+	var new_save := tmp.path_join("Pocket Reef/tank.json")
+	DirAccess.remove_absolute(new_save)
+	var f := FileAccess.open(old_save, FileAccess.WRITE)
+	f.store_string("{\"format\": 2, \"fish\": []}")
+	f.close()
+	_check("old Fishtank save is carried over", TankState.migrate_legacy_save(old_save, new_save)
+		and FileAccess.file_exists(new_save))
+	_check("an existing Pocket Reef save is never overwritten", not TankState.migrate_legacy_save(old_save, new_save))
+	DirAccess.remove_absolute(new_save)
+	DirAccess.remove_absolute(old_save)
+
 	# Format 1 saves (v0.1.0) migrate: fish kept, starter decor added.
 	var old := FileAccess.open(TankState.save_path, FileAccess.WRITE)
 	old.store_string(JSON.stringify({"format": 1, "saved_at": Time.get_unix_time_from_system(),
@@ -415,7 +430,7 @@ func _check(what: String, ok: bool) -> void:
 		_failures += 1
 
 
-## Same measurement for whatever is *behind* the tank (another Fishtank, a blue wallpaper...):
+## Same measurement for whatever is *behind* the tank (another Pocket Reef, a blue wallpaper...):
 ## the test window steps aside for a moment so the real screen can be captured.
 func _water_behind_tank() -> float:
 	var win := get_window()
@@ -438,7 +453,7 @@ func _screen_water_fraction(area := Rect2i()) -> float:
 		area = Rect2i(win.position, win.size)
 	var k := DisplayServer.screen_get_scale()
 	var rect := "%d,%d,%d,%d" % [area.position.x / k, area.position.y / k, area.size.x / k, area.size.y / k]
-	var path := OS.get_cache_dir().path_join("fishtank_smoke_capture.png")
+	var path := OS.get_cache_dir().path_join("pocketreef_smoke_capture.png")
 	OS.execute("screencapture", ["-x", "-R", rect, path])
 	var img := Image.load_from_file(path)
 	if img == null or img.is_empty():

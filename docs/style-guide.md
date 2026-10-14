@@ -15,7 +15,7 @@
 
 ## 2. Palette
 
-Use only **[ENDESGA 32](https://lospec.com/palette-list/endesga-32)**. The file is `art/palette/fishtank.gpl`, which Aseprite loads via Palette → Load. Colour names live in `tools/spritegen/palette.py`.
+Use only **[ENDESGA 32](https://lospec.com/palette-list/endesga-32)**. The file is `art/palette/pocketreef.gpl`, which Aseprite loads via Palette → Load. Colour names live in `tools/spritegen/palette.py`.
 
 | Role | Colours |
 |---|---|

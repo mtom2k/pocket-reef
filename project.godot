@@ -10,12 +10,12 @@ config_version=5
 
 [application]
 
-config/name="Fishtank"
+config/name="Pocket Reef"
 config/description="A tiny aquarium that lives on your desktop."
-config/version="0.4.0"
+config/version="0.5.0"
 run/main_scene="res://scenes/main.tscn"
 config/use_custom_user_dir=true
-config/custom_user_dir_name="Fishtank"
+config/custom_user_dir_name="Pocket Reef"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 run/max_fps=0
 run/low_processor_mode=true

@@ -4,7 +4,9 @@ extends Node2D
 ## species does), avoid crowding, and chase food when hungry. Renders snapped to whole pixels.
 ##
 ## Habits (SpeciesDB): "swim" roams open water; "bottom" dashes and rests along the gravel and
-## occasionally darts up for air; "crawl" walks on the gravel and never leaves it.
+## occasionally darts up for air; "crawl" walks on the gravel and never leaves it; "glass" clings
+## to the front glass (drawn in front of everything) and glides slowly in any direction.
+## A species with a "host" decoration (clownfish -> anemone) stays close to it when there is one.
 ##
 ## Performance: decisions (targets, neighbours, finding food) run THINK_INTERVAL apart, staggered
 ## across fish; movement, chasing a flake and eating it still happen every frame.
@@ -15,6 +17,7 @@ const FOOD_SIGHT := 110.0
 const EAT_RANGE := 3.0
 const HUNGER_FOOD_VALUE := 0.25
 const THINK_INTERVAL := 0.1
+const HOST_RANGE := 30.0  # px: clownfish within this of their anemone count as home
 
 var data: Dictionary  # roster entry from TankState (shared reference)
 var spec: Dictionary
@@ -59,6 +62,8 @@ func setup(entry: Dictionary, tank_node: Node, start: Vector2) -> void:
 	_sprite.offset = -(size / 2.0).floor()
 	_half = (size - Vector2(PAD) * 2.0) / 2.0
 	add_child(_sprite)
+	if spec.habit == "glass":
+		z_index = 2  # on the front glass, in front of the other fish and the decorations
 	_pick_target()
 
 
@@ -123,10 +128,15 @@ func _steer(delta: float) -> Vector2:
 		return _chase(speed)
 
 	match spec.habit:
+		"glass":
+			return _steer_glass(delta, speed)
 		"crawl":
 			return _steer_crawl(delta, speed)
 		"bottom":
 			return _steer_bottom(delta, speed)
+
+	if spec.has("host") and _host_needs_visit():
+		_pick_target()  # an anemone appeared or moved: go home now, not after the current wander
 
 	var desired: Vector2
 	if spec.schooling:
@@ -145,7 +155,8 @@ func _steer(delta: float) -> Vector2:
 ## Nearest flake, but stick with the current one unless another is clearly closer
 ## (otherwise a fish between two flakes keeps changing its mind and never gets either).
 func _pick_food() -> Node2D:
-	var nearest: Node2D = tank.nearest_food(mouth(), FOOD_SIGHT, spec.habit == "crawl")
+	var sight: float = spec.get("food_sight", FOOD_SIGHT)
+	var nearest: Node2D = tank.nearest_food(mouth(), sight, spec.habit == "crawl")
 	if _food != null and is_instance_valid(_food) and not _food.is_queued_for_deletion() and nearest != null:
 		if mouth().distance_to(nearest.position) > 0.7 * mouth().distance_to(_food.position):
 			return _food
@@ -202,6 +213,21 @@ func _steer_crawl(delta: float, speed: float) -> Vector2:
 	return Vector2(signf(_target.x - exact_pos.x) * speed * _pace, 0.0) + Vector2(_separation(speed).x, 0.0)
 
 
+## Glide a short way across the front glass, then cling there for a while.
+func _steer_glass(delta: float, speed: float) -> Vector2:
+	if _rest > 0.0:
+		return Vector2.ZERO
+	_retarget_in -= delta
+	if _retarget_in <= 0.0 or exact_pos.distance_to(_target) < 2.0:
+		if _retarget_in > 0.0:
+			_rest = randf_range(3.0, 10.0)
+		var hop := Vector2(randf_range(-40.0, 40.0), randf_range(-25.0, 25.0))
+		_target = tank.clamp_to_water(exact_pos + hop, _half)
+		_retarget_in = randf_range(5.0, 12.0)
+		_pace = randf_range(0.6, 1.0)
+	return (_target - exact_pos).normalized() * speed * _pace
+
+
 ## Dash along the bottom, rest, repeat; every minute or two, dart up for a gulp of air.
 func _steer_bottom(delta: float, speed: float) -> Vector2:
 	_air_in -= delta
@@ -227,6 +253,22 @@ func _pick_target() -> void:
 	_target = tank.random_point_in_band(spec.depth)
 	_retarget_in = randf_range(3.0, 9.0)
 	_pace = randf_range(0.35, 1.0)
+	if spec.has("host"):
+		# Hover in and around the host (clownfish in their anemone); hurry back when far away.
+		var home: Rect2 = tank.decor_home(spec.host)
+		if home.has_area():
+			var spot := Vector2(home.get_center().x + randf_range(-home.size.x * 0.6, home.size.x * 0.6),
+				home.position.y + randf_range(-10.0, home.size.y * 0.4))
+			_target = tank.clamp_to_water(spot, _half)
+			var far := exact_pos.distance_to(home.get_center()) > HOST_RANGE
+			_retarget_in = randf_range(5.0, 8.0) if far else randf_range(1.5, 4.0)
+			_pace = 1.0 if far else randf_range(0.3, 0.7)
+
+
+## True when there's a host to live in but we're not currently heading for it.
+func _host_needs_visit() -> bool:
+	var home: Rect2 = tank.decor_home(spec.host)
+	return home.has_area() and _target.distance_to(home.get_center()) > HOST_RANGE
 
 
 func _separation(speed: float) -> Vector2:
@@ -234,8 +276,8 @@ func _separation(speed: float) -> Vector2:
 	var personal := maxf(_half.x, 6.0) + 2.0
 	var personal_sq := personal * personal
 	for other in tank.fish_nodes():
-		if other == self:
-			continue
+		if other == self or other.spec.habit == "glass" or spec.habit == "glass":
+			continue  # things on the front glass don't bump into fish swimming behind it
 		var away: Vector2 = exact_pos - other.exact_pos
 		var d_sq := away.length_squared()
 		if d_sq > 0.0001 and d_sq < personal_sq:

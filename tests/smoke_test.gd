@@ -216,6 +216,40 @@ func _run() -> void:
 	await _frames(3)
 	_check("removed fish despawned", _tank.fish_nodes().size() == 1)
 
+	# v0.4 species: orandas, clownfish (who move into an anemone), hillstream loaches, snails
+	_check("oranda added", TankState.add_fish("oranda", "tricolor") == "")
+	_check("clownfish added", TankState.add_fish("clownfish", "default", 2) == "")
+	_check("hillstream loaches added", TankState.add_fish("hillstream_loach", "golden", 2) == "")
+	_check("snails added", TankState.add_fish("snail", "zebra", 2) == "")
+	_check("goldfish colour variants exist", SpeciesDB.SPECIES.goldfish.variants.has("sarasa")
+		and ResourceLoader.exists(SpeciesDB.texture_path("goldfish", "sarasa")))
+	TankState.add_decor("anemone", 0.75)
+	await _frames(2)
+	var home: Rect2 = _tank.decor_home("anemone")
+	_check("anemone placed", home.has_area())
+	await get_tree().create_timer(9.0).timeout
+	var clown_dist := 0.0
+	var loach_moved := false
+	var loach_on_glass := true
+	var snails_down := true
+	for f: Fish in _tank.fish_nodes():
+		match f.data.species:
+			"clownfish":
+				clown_dist = maxf(clown_dist, f.exact_pos.distance_to(home.get_center()))
+			"hillstream_loach":
+				loach_on_glass = loach_on_glass and f.z_index > 0
+				loach_moved = loach_moved or f.velocity.length() > 0.0 or f._rest > 0.0
+			"snail":
+				snails_down = snails_down and absf(f.exact_pos.y + f._half.y - 1.0 - _tank.floor_y()) < 0.01
+	_check("clownfish stay near their anemone (furthest %.0f px)" % clown_dist, clown_dist < 40.0)
+	_check("hillstream loaches cling to the front glass", loach_on_glass and loach_moved)
+	_check("snails crawl on the gravel", snails_down)
+	for f in TankState.fish.duplicate():
+		if f.species != "goldfish":
+			TankState.remove_fish(f.id)
+	TankState.reset_decor()
+	await _frames(3)
+
 	# Decorations
 	_check("castle added", TankState.add_decor("castle", 0.5) == "")
 	_check("chest added", TankState.add_decor("treasure_chest", 0.2) == "")

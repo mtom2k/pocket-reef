@@ -334,6 +334,28 @@ def stem_plant(h, seed):
     return img
 
 
+def anemone(seed=2):
+    """A sea anemone: a rounded foot with a crown of wavy tentacles, lighter at the tips."""
+    rnd = random.Random(seed)
+    w, h = 26, 22
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    foot = render_solid(dome_rows(14, 6, "a", seed=seed), {"a": {"outline": "plum", "shadow": "plum",
+                                                                  "mid": "orchid", "light": "salmon", "highlight": "peach"}})
+    for i in range(16):
+        x0 = 5 + i * 1.0 + rnd.uniform(-0.4, 0.4)
+        lean = (i - 7.5) * 0.18
+        length = rnd.randint(9, 15)
+        phase = rnd.uniform(0, 6.28)
+        for t in range(length):
+            x = round(x0 + lean * t + 1.2 * math.sin(t / 2.2 + phase))
+            y = h - 6 - t
+            if 0 <= x < w and 0 <= y < h:
+                c = "peach" if t >= length - 2 else "salmon" if t > length * 0.45 else "orchid"
+                img.putpixel((x, y), rgba(c))
+    img.alpha_composite(foot, ((w - foot.width) // 2, h - foot.height))
+    return img
+
+
 def pitted_dome(w, h, seed, ramp, pits=8):
     rows = [list(r) for r in dome_rows(w, h, "r", bumps=0.12, seed=seed)]
     rnd = random.Random(seed)
@@ -474,6 +496,7 @@ def build():
         "crystals": render_solid(CRYSTALS, {"a": AMETHYST, "r": STONE}),
         "lava_rock": pitted_dome(22, 11, seed=9, ramp=LAVA),
         "starfish": render_solid(STAR, {"s": STARFISH}, {"s": lambda x, y: (x + y) % 4 == 0}),
+        "anemone": anemone(),
     }
     os.makedirs(OUT, exist_ok=True)
     for name, img in items.items():

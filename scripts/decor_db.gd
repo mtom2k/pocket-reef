@@ -14,7 +14,7 @@ const CATEGORIES := [
 	["Rocks & wood", ["rock", "pebbles", "lava_rock", "crystals", "rock_arch", "driftwood",
 		"driftwood_log", "spiderwood"]],
 	["Ornaments", ["castle", "sunken_ship", "treasure_chest", "diver", "terracotta_pot", "bubble_clam",
-		"coral", "shell", "starfish", "air_stone"]],
+		"coral", "anemone", "shell", "starfish", "air_stone"]],
 ]
 
 const DECOR := {
@@ -48,6 +48,7 @@ const DECOR := {
 	"bubble_clam": {"name": "Bubbling Clam", "sink": 1,
 		"bubbles": {"at": Vector2(0.5, 0.4), "mode": "burst"}},
 	"coral": {"name": "Pink Coral", "sink": 2},
+	"anemone": {"name": "Anemone", "sway": 1.0, "sink": 1},  # clownfish make it their home
 	"shell": {"name": "Conch Shell", "sink": 1},
 	"starfish": {"name": "Starfish", "sink": 1},
 	"air_stone": {"name": "Air Stone", "sink": 1,

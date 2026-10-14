@@ -59,6 +59,14 @@ func item_rect(id: int) -> Rect2:
 	return Rect2(s.position + Vector2(pad, 0), size - Vector2(pad * 2, 0))
 
 
+## The first placed decoration of `type` (its visible rect), or an empty Rect2.
+func find_type(type: String) -> Rect2:
+	for id in _sprites:
+		if _sprites[id].get_meta("type") == type:
+			return item_rect(id)
+	return Rect2()
+
+
 ## [{id, position, mode}] for every decoration that makes bubbles (cached on sync).
 func emitters() -> Array[Dictionary]:
 	return _emitters

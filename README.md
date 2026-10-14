@@ -4,7 +4,7 @@ A tiny pixel-art aquarium that lives on your desktop. It floats above your windo
 
 ![Tank](docs/screenshots/tank.png)
 
-**Version:** 0.3.0 (prototype), set in `project.godot` → `application/config/version`.
+**Version:** 0.4.0 (prototype), set in `project.godot` → `application/config/version`.
 
 ## Installing (macOS)
 
@@ -35,14 +35,24 @@ You can also open the folder in the Godot editor and press **Play**.
 - **Tank:** size (presets or width × height), zoom 2×–5×, performance (Smooth 30 / Balanced 20 / Battery saver 12 fps), bubble volume, mute, always on top, open at login, recentre, and start a new tank.
 - **About:** version and where the save data lives.
 
-**Species (7):** neon tetra, goldfish, betta, guppy, corydoras, angelfish and cherry shrimp, with 15 colour variants in all. Corydoras forage on the bottom and dart up for air. Shrimp walk the gravel.
+**Species (11), with 32 colour variants:**
+- **Goldfish:** orange, sarasa (red & white), calico, black.
+- **Oranda goldfish:** red cap, tricolor (black fins, orange and white body), orange, panda, black.
+- **Clownfish:** ocellaris, black & white, maroon.
+- **Others:** neon tetra, betta, guppy, corydoras, angelfish, cherry shrimp, hillstream loach, snail.
+
+**Behaviours:**
+- Corydoras forage on the bottom and dart up for air.
+- Shrimp and snails walk the gravel.
+- Hillstream loaches cling to the front glass and glide around.
+- Clownfish move into an anemone if the tank has one.
 
 **Floors (7):** natural gravel, fine sand, coral sand, black sand, river pebbles, rainbow gravel and jade pebbles.
 
-**Decorations (26):**
+**Decorations (27):**
 - **Plants:** tall and regular ribbon plants, hairgrass, Amazon sword, anubias, java fern, red ludwigia, moss ball.
 - **Rocks & wood:** boulder, pebbles, lava rock, amethyst, rock arch, driftwood, hollow log, spider wood.
-- **Ornaments:** castle, sunken ship, treasure chest, diver, clay pot cave, bubbling clam, pink coral, conch shell, starfish, air stone.
+- **Ornaments:** castle, sunken ship, treasure chest, diver, clay pot cave, bubbling clam, pink coral, anemone, conch shell, starfish, air stone.
 
 The ship, chest, diver and clam release bursts of bubbles; the air stone gives a steady stream.
 
@@ -129,6 +139,15 @@ This (macOS) launches a hidden tank and fails if it takes more than 600 ms to an
 
 ## Performance
 
+**Timing model (v0.4):** Godot runs in low-processor mode with no frame cap.
+- **Input:** handled every ~7 ms.
+- **Redrawing:** a window is redrawn only when something in it changed, so the settings window and menus are never held back by the tank.
+- **The tank's own clock:** `main.gd _tick()` steps fish, food, bubbles and plant sway at the Performance setting.
+- **Between ticks** nothing changes, so nothing is redrawn.
+- **Hidden or covered,** nothing steps at all.
+
+A frame cap isn't used for saving power, because on macOS it sleeps the main thread (see v0.2.3).
+
 `tests/perf_probe` boots the real tank in a scenario and reports its own CPU use and memory:
 
 ```bash
@@ -139,10 +158,12 @@ Results on an M2 Pro (CPU % of one core; budget for roughly 4–6× on low-end m
 
 | Scenario | v0.2.0 (30 fps) | v0.2.1 default (20 fps) | Battery saver (12 fps) |
 |---|---|---|---|
-| Starter tank | 9.9% | 6.9% | 4.6% |
-| Busy tank | 17.0% | 10.7% | 7.3% |
-| Hidden | 3.6% | 1.2% (0.7% in v0.2.2, but that froze the menu bar) | — |
-| Covered | same as visible | 1.2% | — |
+| Starter tank | 9.9% | 8.3% (6.9% in v0.2.1–0.3, capped) | 4.6% |
+| Busy tank | 17.0% | 11.9% | 9.5% |
+| Hidden | 3.6% | 2.2% (0 frames drawn) | — |
+| Covered | same as visible | 2.1% (0 frames drawn) | — |
+
+The uncapped loop costs about 1 point of CPU over v0.3's capped one. In return, the settings UI redraws at ~116 fps while the tank animates at 12–30.
 
 **What helps:**
 - Fewer frames per second; engine overhead scales with frame rate.

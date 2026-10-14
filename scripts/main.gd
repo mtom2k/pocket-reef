@@ -5,7 +5,8 @@ extends Node2D
 ## right-click for the menu. In decorate mode, drag decorations to move them, double-click to
 ## flip, right-click to remove, Esc to finish. The tray / menu bar icon has the same menu.
 ##
-## Debug: `godot --path . -- --screenshot=/tmp/tank.png` saves a frame after 3 s and quits.
+## Debug: `godot --path . -- --screenshot=/tmp/tank.png` saves a frame after 3 s (or
+## `--screenshot-delay=SECONDS`) and quits.
 ## Add `--debug-feed` to drop food, `--debug-settings[=tab]` to open (and capture) the settings window,
 ## `--debug-close-settings-after=SECONDS` to close it again.
 
@@ -92,10 +93,14 @@ func _ready() -> void:
 	get_window().close_requested.connect(_quit)
 	LoginItem.refresh()
 
+	var shot_delay := 3.0
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--screenshot-delay="):
+			shot_delay = float(arg.get_slice("=", 1))
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--screenshot="):
 			_screenshot_path = arg.trim_prefix("--screenshot=")
-			get_tree().create_timer(3.0).timeout.connect(_take_screenshot)
+			get_tree().create_timer(shot_delay).timeout.connect(_take_screenshot)
 		elif arg == "--debug-feed":
 			get_tree().create_timer(0.5).timeout.connect(func(): feed_at(tank_size.x / 2.0, 8))
 		elif arg.begins_with("--debug-close-settings-after="):
@@ -274,6 +279,12 @@ func nearest_food(from: Vector2, max_distance: float, on_floor_only := false) ->
 			best_d = d
 			best = food
 	return best
+
+
+## Where the nearest decoration of `type` is (clownfish look for their anemone), or an empty
+## Rect2 if the tank has none.
+func decor_home(type: String) -> Rect2:
+	return _decor.find_type(type)
 
 
 func eat(food: Node2D) -> void:

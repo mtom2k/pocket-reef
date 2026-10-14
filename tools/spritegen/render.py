@@ -12,6 +12,11 @@ Silhouette legend (fish face RIGHT):
   F  fin accent      (hand-placed tips / spots, never outlined)
   e  eye             w  eye highlight
   m  mouth / gill    (drawn in the body shadow colour)
+  W  wen             (an oranda's bumpy head growth: own "wen" ramp, lumpy texture)
+
+Optional ramps:
+  "patches": {"ramp": {...}, "seed": n, "count": k}  blotches of a second colour over the
+             body and belly (sarasa goldfish, panda oranda...). Deterministic per seed.
 
 Shared rules (see docs/style-guide.md):
   * Light comes from the water surface: brightest spot is upper-front of the body.
@@ -23,12 +28,13 @@ Shared rules (see docs/style-guide.md):
 """
 
 import math
+import random
 
 from PIL import Image
 
 from palette import rgba
 
-BODYISH = set("bB12ewm")
+BODYISH = set("bB12ewmW")
 FIN_LAYER = {"f": 0, "g": 1, "h": 3}
 BODY_LAYER = 2
 
@@ -87,6 +93,18 @@ def render(rows: list[str], ramps: dict, fin_roots: dict | None = None,
 
     body = ramps["body"]
     fin = ramps["fin"]
+
+    # Colour patches: a few random discs over the body, clipped to body/belly pixels.
+    patch = set()
+    if "patches" in ramps:
+        rnd = random.Random(ramps["patches"].get("seed", 1))
+        for _ in range(ramps["patches"].get("count", 4)):
+            cx, cy = rnd.uniform(bx0, bx1), rnd.uniform(by0, by1)
+            r = rnd.uniform(2.0, max(2.5, (by1 - by0) * 0.35))
+            for y in range(h):
+                for x in range(w):
+                    if (x - cx) ** 2 + ((y - cy) * 1.3) ** 2 <= r * r:
+                        patch.add((x, y))
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     px = img.load()
 
@@ -126,12 +144,26 @@ def render(rows: list[str], ramps: dict, fin_roots: dict | None = None,
                     elif r < fin_reach[root] * 0.35:
                         tone = "inner"
                 px[x, y] = _c(fin.get(tone, fin["mid"]))
+            elif ch == "W":
+                wen = ramps.get("wen", body)
+                if edge:
+                    px[x, y] = _c(wen["outline"])
+                    continue
+                # Lumpy: 2px bumps, lit on their top-left.
+                bump = ((x // 2) + (y // 2)) % 2 == 0
+                top_left = x % 2 == 0 and y % 2 == 0
+                tone = ("highlight" if top_left else "light") if bump else "mid"
+                if at(x, y + 1) not in "W" or at(x + 1, y) == ".":
+                    tone = "shadow"
+                px[x, y] = _c(wen.get(tone, wen["mid"]))
             else:  # body, belly, patterns
                 if edge:
                     px[x, y] = _c(body["outline"])
                     continue
                 ramp = {"b": body, "B": ramps.get("belly", body),
                         "1": ramps.get("p1", body), "2": ramps.get("p2", body)}[ch]
+                if ch in "bB" and (x, y) in patch:
+                    ramp = ramps["patches"]["ramp"]
                 top, bot = col_extent[x]
                 t = (y - top) / max(1, bot - top)
                 u = (x - bx0) / max(1, bx1 - bx0)

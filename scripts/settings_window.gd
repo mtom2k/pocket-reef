@@ -1,17 +1,31 @@
 extends Window
 ## Native settings window: fish, decorations and floor, tank options, and the app version.
 ##
-## HiDPI: the window is sized in logical pixels times the screen's scale (2 on Retina) and uses
-## the "canvas_items" content scale, so text is rendered at full resolution and stays crisp. When
-## the user resizes the window, the layout reflows instead of zooming.
+## Sizing (works at any window size and screen resolution):
+## - HiDPI: the window is sized in logical pixels times the screen's scale (2 on Retina Macs) and
+##   uses the "canvas_items" content scale, so text is rendered at full resolution and stays crisp.
+## - Zoom: everything scales gently with the window's width (ZOOM_MIN..ZOOM_MAX of the design
+##   size), so a big window gets bigger text but a small one never gets hard to read.
+## - Reflow (_reflow): grids pick their column count from the available width, and below NARROW
+##   label/control rows stack. Nothing is ever cut off; long content scrolls vertically.
 
 const LOGICAL_SIZE := Vector2i(780, 740)
-const LOGICAL_MIN := Vector2i(640, 520)
+const LOGICAL_MIN := Vector2i(420, 400)
+const ZOOM_MIN := 0.9
+const ZOOM_MAX := 1.35
+const NARROW := 600  # logical width below which label/control rows stack
+## Horizontal space inside a tab that cards can't use: window margins, tab panel and card padding,
+## scrollbar.
+const CHROME := 112
 const FISH_ICON := Vector2(72, 40)
 
 var tabs: TabContainer
 
 var _ui := 1.0
+var _zoom := 1.0
+var _grids: Array[Dictionary] = []  # {grid, cell, min, max}: reflowed by width
+var _setting_rows: Array[BoxContainer] = []  # stack vertically when narrow
+var _stock_row: BoxContainer
 var _stock_label: Label
 var _stock_bar: ProgressBar
 var _fish_list: VBoxContainer
@@ -75,8 +89,27 @@ func open_near(anchor: Window) -> void:
 
 
 func _on_size_changed() -> void:
-	# Keep the scale fixed at the screen's scale and give the layout the extra room.
-	content_scale_size = Vector2i(Vector2(size) / _ui)
+	var logical := Vector2(size) / _ui
+	_zoom = clampf(logical.x / LOGICAL_SIZE.x, ZOOM_MIN, ZOOM_MAX)
+	content_scale_size = Vector2i(logical / _zoom)
+	_reflow()
+
+
+## Adapts the layout to the space the window has (in logical pixels, after zoom).
+func _reflow() -> void:
+	if tabs == null:
+		return
+	var width := content_scale_size.x
+	var avail := width - CHROME
+	for g in _grids:
+		var gap := 8
+		g.grid.columns = clampi(int((avail + gap) / (g.cell + gap)), g.min, g.max)
+	var narrow := width < NARROW
+	for row in _setting_rows:
+		row.vertical = narrow
+	_stock_row.vertical = narrow
+	for bar in _hunger_bars.values():
+		bar.custom_minimum_size.x = 64 if narrow else 110
 
 
 func _ready() -> void:
@@ -109,6 +142,7 @@ func _ready() -> void:
 	_sync_tank_tab()
 	_sync_floor()
 	_sync_decorate_toggle()
+	_reflow()
 
 
 var _bar_refresh := 0.0
@@ -201,10 +235,12 @@ func _margin(px: int) -> MarginContainer:
 	return m
 
 
-## A labelled row inside a card: fixed-width label on the left, control on the right.
+## A labelled row inside a card: label on the left and control on the right, or stacked when the
+## window is narrow (see _reflow).
 func _setting_row(parent: Control, label: String, control: Control) -> void:
-	var row := HBoxContainer.new()
+	var row := BoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
+	_setting_rows.append(row)
 	var l := _label(label)
 	l.custom_minimum_size.x = 150
 	row.add_child(l)
@@ -238,15 +274,15 @@ func _build_fish_tab() -> Control:
 	var root := _column()
 
 	var stock := _card(root, "Tank space")
-	var stock_row := HBoxContainer.new()
-	stock_row.add_theme_constant_override("separation", 14)
+	_stock_row = BoxContainer.new()
+	_stock_row.add_theme_constant_override("separation", 14)
 	_stock_label = _label("")
-	_stock_label.custom_minimum_size.x = 260
-	stock_row.add_child(_stock_label)
+	_stock_label.custom_minimum_size.x = 240
+	_stock_row.add_child(_stock_label)
 	_stock_bar = _bar(UITheme.ACCENT, 160)
 	_stock_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	stock_row.add_child(_stock_bar)
-	stock.add_child(stock_row)
+	_stock_row.add_child(_stock_bar)
+	stock.add_child(_stock_row)
 
 	var fish := _card(root, "Your fish", "Click a name to rename. The green bar shows how full each fish is.")
 	_fish_list = VBoxContainer.new()
@@ -254,8 +290,9 @@ func _build_fish_tab() -> Control:
 	fish.add_child(_fish_list)
 
 	var add := _card(root, "Add fish")
-	var add_row := HBoxContainer.new()
-	add_row.add_theme_constant_override("separation", 10)
+	var add_row := HFlowContainer.new()  # wraps onto more lines when narrow
+	add_row.add_theme_constant_override("h_separation", 10)
+	add_row.add_theme_constant_override("v_separation", 8)
 	_add_preview = _pixel_icon(null, FISH_ICON)
 	add_row.add_child(_add_preview)
 	_species_pick = OptionButton.new()
@@ -264,9 +301,11 @@ func _build_fish_tab() -> Control:
 		_species_pick.set_item_metadata(_species_pick.item_count - 1, key)
 	_species_pick.item_selected.connect(func(_i): _refresh_variants())
 	_species_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_species_pick.custom_minimum_size.x = 170
 	_variant_pick = OptionButton.new()
 	_variant_pick.item_selected.connect(func(_i): _refresh_preview())
 	_variant_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_variant_pick.custom_minimum_size.x = 140
 	_count_pick = SpinBox.new()
 	_count_pick.min_value = 1
 	_count_pick.max_value = 12
@@ -345,10 +384,14 @@ func _rebuild_fish_list() -> void:
 		name_edit.text_submitted.connect(func(t): TankState.rename_fish(id, t))
 		name_edit.focus_exited.connect(func(): TankState.rename_fish(id, name_edit.text))
 		names.add_child(name_edit)
-		names.add_child(_label("%s · %s" % [spec.name, spec.variants[f.variant]], "Hint"))
+		var kind := _label("%s · %s" % [spec.name, spec.variants[f.variant]], "Hint")
+		kind.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS  # shortens in narrow windows
+		kind.clip_text = true
+		kind.tooltip_text = kind.text
+		names.add_child(kind)
 		row.add_child(names)
 
-		var hunger := _bar(UITheme.GOOD, 110)
+		var hunger := _bar(UITheme.GOOD, 64 if content_scale_size.x < NARROW else 110)
 		hunger.max_value = 1.0
 		hunger.value = 1.0 - f.hunger
 		hunger.tooltip_text = "Fullness"
@@ -377,6 +420,7 @@ func _build_decor_tab() -> Control:
 	var floor_box := _card(root, "Floor", "Pick what covers the bottom of the tank.")
 	var floors := GridContainer.new()
 	floors.columns = 4
+	_grids.append({"grid": floors, "cell": 170, "min": 1, "max": 4})  # 144px swatch + padding
 	floors.add_theme_constant_override("h_separation", 8)
 	floors.add_theme_constant_override("v_separation", 8)
 	var group := ButtonGroup.new()
@@ -390,7 +434,7 @@ func _build_decor_tab() -> Control:
 		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		b.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		b.add_theme_font_size_override("font_size", 13)
-		b.custom_minimum_size = Vector2(150, 0)
+		b.custom_minimum_size = Vector2(170, 0)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.pressed.connect(TankState.set_setting.bind("substrate", key))
 		floors.add_child(b)
@@ -401,6 +445,7 @@ func _build_decor_tab() -> Control:
 		var box := _card(root, category[0])
 		var grid := GridContainer.new()
 		grid.columns = 5
+		_grids.append({"grid": grid, "cell": 120, "min": 2, "max": 7})  # 96px icon + padding
 		grid.add_theme_constant_override("h_separation", 8)
 		grid.add_theme_constant_override("v_separation", 8)
 		for type in category[1]:
@@ -412,7 +457,7 @@ func _build_decor_tab() -> Control:
 			b.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 			b.add_theme_font_size_override("font_size", 12)
 			b.clip_text = true
-			b.custom_minimum_size = Vector2(118, 0)
+			b.custom_minimum_size = Vector2(120, 0)
 			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			b.tooltip_text = "Add %s to the tank" % DecorDB.DECOR[type].name
 			b.pressed.connect(func(): _decor_status.text = TankState.add_decor(type))
@@ -420,7 +465,7 @@ func _build_decor_tab() -> Control:
 		box.add_child(grid)
 
 	var placed := _card(root, "")
-	var placed_head := HBoxContainer.new()
+	var placed_head := HFlowContainer.new()  # the Reset button wraps below when narrow
 	_decor_count = _label("", "Section")
 	_decor_count.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	placed_head.add_child(_decor_count)

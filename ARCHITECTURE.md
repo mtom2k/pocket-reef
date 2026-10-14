@@ -52,7 +52,7 @@ docs/                                  style guide, screenshots
 | `decor_layer.gd` | Places decorations on the gravel; handles hit-testing, plant sway, bubble emitters and `find_type`. |
 | `tank_renderer.gd` | Draws the water, the 7 floors and the glass frame for any tank size. Hash-based, so resizing is stable. |
 | `species_db.gd` · `decor_db.gd` | Static catalogues of species (habit, speed, bioload, depth band, variants) and decorations (sway, sink, bubbles, categories). |
-| `settings_window.gd` · `ui_theme.gd` | The native settings window (Fish, Decor, Tank and About tabs) and its theme. |
+| `settings_window.gd` · `ui_theme.gd` | The native settings window (Fish, Decor, Tank and About tabs) and its theme. It is responsive: `_reflow()` picks grid column counts from the width, label/control rows stack below 600 logical px, and zoom is 0.9–1.35× of the design size. |
 | `tray.gd` | Menu-bar/tray `StatusIndicator` plus a right-click `PopupMenu`. |
 | `tank_audio.gd` | Looping bubbler and occasional pops. |
 | `login_item.gd` | Open at login: a LaunchAgent plist on macOS, the `HKCU\…\Run` key on Windows. |
@@ -140,5 +140,6 @@ Rules are in [docs/style-guide.md](docs/style-guide.md).
 | Test | What it covers |
 |---|---|
 | `tests/smoke_test.tscn` | Boots the real tank and drives everything (105 checks): settings, species, decor, floors, resize, input, timing (frames drawn per mode), hidden and covered states (including real screen captures), save and migrations. Refuses to run against the real save file. |
+| `tests/settings_layout.tscn` | Opens the settings window at 420×400 up to 1200×900 and fails if any control on any tab sticks out past the window. Can save screenshots with `--shots=DIR`. |
 | `tests/responsiveness.sh` | Hidden tank must answer Apple Events in under 600 ms. Guards against the v0.2.2 menu-bar freeze. |
 | `tests/perf_probe.tscn` | CPU, memory, frames drawn and loop rate per scenario (`--scenario`, `--performance`, `--zoom`, `--sleep-usec`). |

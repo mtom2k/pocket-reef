@@ -20,6 +20,7 @@ To package, install the **Godot 4.7.2 export templates**: Editor → Manage Expo
 | Run | `godot --path .` |
 | Run without touching your real tank | `godot --path . -- --save-file=user://dev.json` |
 | Smoke test (must pass) | `godot --path . res://tests/smoke_test.tscn -- --save-file=user://smoke_test.json` |
+| Settings layout (must pass) | `godot --path . res://tests/settings_layout.tscn -- --save-file=user://layout.json` |
 | Responsiveness (macOS, must pass) | `tests/responsiveness.sh` |
 | Performance | `godot --path . res://tests/perf_probe.tscn -- --save-file=user://perf.json --scenario=busy` |
 | Regenerate all art | `uv run --with pillow tools/spritegen/export_godot.py` |
@@ -44,7 +45,8 @@ To package, install the **Godot 4.7.2 export templates**: Editor → Manage Expo
 7. **Keep the docs current in the same commit:** README (features, counts, version), ARCHITECTURE (structure), DECISIONS (append, don't rewrite history), INSTRUCTIONS (workflow).
 8. **Bump `application/config/version`** in `project.godot` for user-visible changes. The app, the DMG name and the save file all read it.
 9. **Code style:** GDScript with static types, `##` doc comments on scripts and non-obvious functions, comments that explain *why*, and tabs for indentation.
-10. **Verify visually.** Render a screenshot (`--screenshot`) or a preview sheet and look at it, rather than trusting state checks alone.
+10. **The settings UI must fit at 420×400.** Give wide controls a reflow rule (add them to `_grids` or `_setting_rows`, or use an `HFlowContainer`) and run the layout test. (DECISIONS #19)
+11. **Verify visually.** Render a screenshot (`--screenshot`) or a preview sheet and look at it, rather than trusting state checks alone.
 
 ## Checklists
 
@@ -65,7 +67,7 @@ To package, install the **Godot 4.7.2 export templates**: Editor → Manage Expo
 
 **Release (macOS)**
 1. Bump the version.
-2. Run both tests.
+2. Run all three tests.
 3. Run `tools/release/build_macos.sh`.
 4. Install from the DMG and check it by hand: the tray menu, settings and feeding.
 5. Commit and tag `vX.Y.Z`.
@@ -82,4 +84,4 @@ To package, install the **Godot 4.7.2 export templates**: Editor → Manage Expo
 
 ## Commits
 
-Write a short imperative subject and a body that explains *why*. Version bumps go in the subject, e.g. `v0.5.0: …`. Run both tests before committing.
+Write a short imperative subject and a body that explains *why*. Version bumps go in the subject, e.g. `v0.5.0: …`. Run all three tests before committing.

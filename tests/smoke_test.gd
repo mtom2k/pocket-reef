@@ -137,6 +137,7 @@ func _run() -> void:
 	TankState.set_setting("tank_visible", true)
 	await _frames(3)
 	_check("show tank", _tank.visible and not win.mouse_passthrough)
+	await get_tree().create_timer(0.5).timeout  # let the clock settle before measuring
 	draws = await _draws_per_second(1.0)
 	_check("showing resumes drawing (%.1f frames/s)" % draws, draws >= 15.0)
 	TankState.set_setting("always_on_top", false)

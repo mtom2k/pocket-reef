@@ -14,6 +14,7 @@ A tiny pixel-art aquarium that floats on your desktop, bubbles softly in the bac
 - 🫧 **Ambient bubbling** with volume and mute.
 - 🔋 **Light on power.** The tank pauses when hidden or covered, and the UI is never throttled.
 - 🚀 **Menu-bar app** with an "open at login" option.
+- 📐 **Settings window** that adapts to any size or screen: it reflows, zooms gently, and never cuts anything off.
 
 ## 📸 Screenshots
 
@@ -38,7 +39,8 @@ A tiny pixel-art aquarium that floats on your desktop, bubbles softly in the bac
 ```bash
 brew install --cask godot                                  # Godot 4.7
 godot --path .                                             # run it
-godot --path . res://tests/smoke_test.tscn -- --save-file=user://smoke_test.json   # 105 checks
+godot --path . res://tests/smoke_test.tscn -- --save-file=user://smoke_test.json       # 105 checks
+godot --path . res://tests/settings_layout.tscn -- --save-file=user://layout.json     # nothing cut off, 420×400 → 1200×900
 tests/responsiveness.sh                                    # menu-bar responsiveness guard
 ```
 
@@ -53,7 +55,7 @@ tests/responsiveness.sh                                    # menu-bar responsive
 
 ## 🗺️ Status
 
-**v0.5.0** prototype. 🍎 macOS is tested; 🪟 Windows builds but hasn't been tested yet.
+**v0.5.1** prototype. 🍎 macOS is tested; 🪟 Windows builds but hasn't been tested yet.
 
 **Next:** a Windows build, Developer ID signing, eating animations, and tapping the glass.
 

@@ -93,3 +93,14 @@ This is the most important decision. History:
 ### 18. Outside "quit" requests during tests
 - **Context:** a third-party utility on the developer's Mac (Vorssaint) quits regular apps a few seconds after their last window closes. Test runs appear as a regular "Godot" app, so it quit them. The packaged menu-bar app is unaffected.
 - **Decision:** the smoke test disconnects the window's close handler and logs a note instead of quitting.
+
+### 19. A responsive settings window, not a fixed layout
+- **Context:** shrinking the window cut off content on the right (fixed 4- and 5-column grids, wide rows), and it couldn't go below 640×520.
+- **Decision:**
+  - The window can shrink to 420×400 (logical).
+  - `_reflow()` sets each grid's column count from the available width.
+  - Below 600 logical px, label/control rows stack vertically.
+  - The "Add fish" row and the decor header wrap (they use `HFlowContainer`).
+  - Long captions shorten with "…".
+  - Zoom = window width ÷ design width, clamped to **0.9–1.35**: bigger windows get bigger text, but small ones never drop below 90% (about 13.5 px), so text stays readable.
+- **Consequences:** `tests/settings_layout.tscn` must pass. A new wide control needs either a reflow rule or a minimum width under about 300 px.

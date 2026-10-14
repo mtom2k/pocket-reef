@@ -8,6 +8,8 @@ const SWAY_PAD := Vector2i(3, 0)
 var tank_size := TankState.DEFAULT_TANK
 var _sprites := {}  # decor id -> Sprite2D
 var _emitters: Array[Dictionary] = []
+var _sway: Array[ShaderMaterial] = []
+var _time := 0.0
 
 
 func sync(size: Vector2i) -> void:
@@ -15,12 +17,20 @@ func sync(size: Vector2i) -> void:
 	for child in get_children():
 		child.free()
 	_sprites.clear()
+	_sway.clear()
 	var items := TankState.decor.duplicate()
 	# Tall pieces at the back so they never hide the small ones.
 	items.sort_custom(func(a, b): return _texture_height(a.type) > _texture_height(b.type))
 	for d in items:
 		_add(d)
 	_emitters = _find_emitters()
+
+
+## Plant sway, on the tank's clock (main.gd _tick).
+func step(dt: float) -> void:
+	_time += dt
+	for mat in _sway:
+		mat.set_shader_parameter("time", _time)
 
 
 ## Moves a piece visually while it's being dragged; TankState is updated on release.
@@ -78,7 +88,9 @@ func _add(d: Dictionary) -> void:
 		mat.shader = SWAY_SHADER
 		mat.set_shader_parameter("amplitude", sway)
 		mat.set_shader_parameter("seed", float(d.id) * 1.7)
+		mat.set_shader_parameter("time", _time)
 		s.material = mat
+		_sway.append(mat)
 	else:
 		s.texture = load(path)
 

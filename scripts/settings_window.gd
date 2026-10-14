@@ -111,9 +111,14 @@ func _ready() -> void:
 	_sync_decorate_toggle()
 
 
-func _process(_delta: float) -> void:
-	if not visible:
+var _bar_refresh := 0.0
+
+
+func _process(delta: float) -> void:
+	_bar_refresh -= delta
+	if not visible or _bar_refresh > 0.0:
 		return
+	_bar_refresh = 0.5  # fullness changes slowly; no need to touch the UI every iteration
 	for f in TankState.fish:
 		if _hunger_bars.has(f.id):
 			_hunger_bars[f.id].value = 1.0 - f.hunger

@@ -17,7 +17,8 @@ func _ready() -> void:
 	exact_pos = position
 
 
-func _process(delta: float) -> void:
+## Called by the tank's clock (main.gd _tick).
+func step(delta: float) -> void:
 	if exact_pos.y < floor_y:
 		_drift += delta * 2.0
 		exact_pos += Vector2(sin(_drift) * 3.0, SINK_SPEED * randf_range(0.7, 1.2)) * delta

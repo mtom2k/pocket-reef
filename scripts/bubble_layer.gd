@@ -1,6 +1,6 @@
 extends Node2D
 ## All rising bubbles, drawn by this one node (no node per bubble, so nothing is created or
-## freed while the tank runs).
+## freed while the tank runs). Stepped and redrawn only on the tank's ticks.
 
 signal surfaced(big: bool)
 
@@ -34,7 +34,8 @@ func count() -> int:
 	return _pos.size()
 
 
-func _process(delta: float) -> void:
+## Called by the tank's clock (main.gd _tick).
+func step(delta: float) -> void:
 	var i := 0
 	while i < _pos.size():
 		_wobble[i] += delta * 4.0

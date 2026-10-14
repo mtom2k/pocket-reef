@@ -62,7 +62,8 @@ func setup(entry: Dictionary, tank_node: Node, start: Vector2) -> void:
 	_pick_target()
 
 
-func _process(delta: float) -> void:
+## One animation step, called by the tank's clock (main.gd _tick), not every frame.
+func step(delta: float) -> void:
 	data.hunger = minf(1.0, data.hunger + TankState.HUNGER_PER_SECOND * delta)
 	_excited = maxf(0.0, _excited - delta)
 

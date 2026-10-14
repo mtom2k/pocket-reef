@@ -55,9 +55,14 @@ func _ready() -> void:
 		_tank.process_mode = Node.PROCESS_MODE_DISABLED
 	print("scenario=%s fish=%d decor=%d tank=%s" % [scenario, TankState.fish.size(), TankState.decor.size(), TankState.tank_size()])
 
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--sleep-usec="):  # override the loop's input-check interval
+			await get_tree().process_frame
+			OS.low_processor_usage_mode_sleep_usec = int(arg.trim_prefix("--sleep-usec="))
 	await get_tree().create_timer(2.0).timeout  # warm-up
 	var cpu_start := _cpu_seconds()
 	var wall_start := Time.get_ticks_msec()
+	var drawn_start := Engine.get_frames_drawn()
 	for i in 10:
 		await get_tree().create_timer(1.0).timeout
 		var s := {
@@ -78,6 +83,7 @@ func _ready() -> void:
 		for s in _samples:
 			total += s[key]
 		avg[key] = snappedf(total / _samples.size(), 0.01)
+	avg["drawn_per_s"] = snappedf((Engine.get_frames_drawn() - drawn_start) / ((Time.get_ticks_msec() - wall_start) / 1000.0), 0.1)
 	avg["cpu_percent"] = snappedf(100.0 * (_cpu_seconds() - cpu_start) / ((Time.get_ticks_msec() - wall_start) / 1000.0), 0.1)
 	var rss := []
 	OS.execute("ps", ["-o", "rss=", "-p", str(OS.get_process_id())], rss)

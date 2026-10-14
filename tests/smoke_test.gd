@@ -22,6 +22,12 @@ func _ready() -> void:
 
 	_tank = Main.instantiate()
 	add_child(_tank)
+	# Auto-quit utilities (e.g. one that quits apps after their last window closes) treat this
+	# test run, a regular "Godot" app, as fair game once the settings window closes. The packaged
+	# menu-bar app isn't affected. Keep the test running and say so.
+	for c in get_window().close_requested.get_connections():
+		get_window().close_requested.disconnect(c.callable)
+	get_window().close_requested.connect(func(): print("NOTE  ignored a quit request from outside the app"))
 	await _frames(10)
 	await _run()
 	print("SMOKE TEST %s (%d failures)" % ["PASSED" if _failures == 0 else "FAILED", _failures])
@@ -67,26 +73,43 @@ func _run() -> void:
 	TankState.set_tank_size(TankState.DEFAULT_TANK)
 	await _frames(3)
 
-	# Visibility, on-top, audio
-	# Performance modes and the hidden-tank power state
-	_check("default mode is balanced (20 fps)", Engine.max_fps == 20)
+	# Timing model: uncapped loop in low-processor mode; the tank animates on its own clock.
+	_check("loop is uncapped, in low-processor mode", Engine.max_fps == 0 and OS.low_processor_usage_mode)
 	for mode in TankState.PERFORMANCE_MODES:
 		TankState.set_setting("performance", mode)
-		await _frames(1)
-		_check("%s mode caps fps at %d" % [mode, TankState.PERFORMANCE_MODES[mode].fps],
-			Engine.max_fps == TankState.PERFORMANCE_MODES[mode].fps)
+		var want: int = TankState.PERFORMANCE_MODES[mode].fps
+		var ticks := await _ticks_per_second(1.0)
+		_check("%s: tank animates at %d/s (measured %.1f)" % [mode, want, ticks], absf(ticks - want) <= want * 0.15)
 	TankState.set_setting("performance", "balanced")
-	await _frames(30)
+	var draws := await _draws_per_second(1.0)
+	_check("visible tank redraws only on its ticks (%.1f frames/s)" % draws, draws <= 22.0 and draws >= 15.0)
 	_check("bubbles are flowing", _tank._bubble_layer.count() > 0)
+
+	# The settings window is not held back by the tank's frame rate.
+	TankState.set_setting("performance", "saver")
+	_tank._open_settings()
+	await _frames(5)
+	var ui_frames := Engine.get_frames_drawn()
+	var t0 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t0 < 1000:
+		_tank._settings._stock_bar.value = randf() * _tank._settings._stock_bar.max_value  # a UI change every iteration
+		await get_tree().process_frame
+	var ui_rate := (Engine.get_frames_drawn() - ui_frames) / ((Time.get_ticks_msec() - t0) / 1000.0)
+	_check("settings UI redraws at %.0f frames/s while the tank runs at 12" % ui_rate, ui_rate >= 50.0)
+	_tank._settings.hide()
+	_tank._settings._update_stocking()
+	TankState.set_setting("performance", "balanced")
+	await _frames(3)
 
 	var behind := await _water_behind_tank()
 	var tank_on_screen := await _screen_water_fraction()
 	TankState.set_setting("tank_visible", false)
 	await get_tree().create_timer(0.5).timeout
 	_check("hide tank", not _tank.visible and win.mouse_passthrough)
-	_check("hidden tank idles at %d ticks/s (not slower: menus need the main thread)" % _tank.IDLE_FPS,
-		Engine.max_fps == _tank.IDLE_FPS)
-	_check("hidden tank stops drawing (macOS)", OS.get_name() != "macOS" or not RenderingServer.render_loop_enabled)
+	draws = await _draws_per_second(1.0)
+	_check("hidden tank draws nothing (%.1f frames/s)" % draws, draws < 0.5)
+	_check("hidden tank checks input every %d ms" % (_tank.IDLE_SLEEP_USEC / 1000),
+		OS.low_processor_usage_mode_sleep_usec == _tank.IDLE_SLEEP_USEC)
 	if tank_on_screen >= 0.0:
 		var after := await _screen_water_fraction()
 		_check("hidden tank really disappears from the screen (water %.0f%% -> %.0f%%, %.0f%% is whatever is behind it)"
@@ -94,25 +117,28 @@ func _run() -> void:
 			tank_on_screen > behind + 0.15 and after <= behind + 0.05)
 	_tank._tray._menus[0].about_to_popup.emit()
 	await _frames(1)
-	_check("menu open while hidden: loop speeds up", Engine.max_fps == _tank.MENU_FPS)
+	_check("menu open: input checked every %.1f ms" % (_tank.ACTIVE_SLEEP_USEC / 1000.0),
+		OS.low_processor_usage_mode_sleep_usec == _tank.ACTIVE_SLEEP_USEC)
 	_tank._tray._menus[0].popup_hide.emit()
 	await _frames(1)
-	_check("menu closed: back to idle", Engine.max_fps == _tank.IDLE_FPS)
-	_check("hidden tank pauses fish", _tank._fish_layer.process_mode == Node.PROCESS_MODE_DISABLED)
+	_check("menu closed: back to idle", OS.low_processor_usage_mode_sleep_usec == _tank.IDLE_SLEEP_USEC)
+	var fish0: Fish = _tank.fish_nodes()[0]
+	var where := fish0.exact_pos
 	var hunger_before: float = TankState.fish[0].hunger
 	await get_tree().create_timer(1.5).timeout
+	_check("hidden tank pauses fish", fish0.exact_pos == where)
 	_check("fish still get hungry while hidden", TankState.fish[0].hunger > hunger_before)
 	_tank._open_settings()
 	await _frames(2)
-	_check("settings while hidden: full speed", Engine.max_fps == 20 and RenderingServer.render_loop_enabled)
+	_check("settings while hidden: responsive", OS.low_processor_usage_mode_sleep_usec == _tank.ACTIVE_SLEEP_USEC)
 	_tank._settings.hide()
 	await _frames(2)
-	await get_tree().create_timer(0.5).timeout
-	_check("closing settings while hidden: idle again", Engine.max_fps == _tank.IDLE_FPS)
+	_check("closing settings while hidden: idle again", OS.low_processor_usage_mode_sleep_usec == _tank.IDLE_SLEEP_USEC)
 	TankState.set_setting("tank_visible", true)
 	await _frames(3)
 	_check("show tank", _tank.visible and not win.mouse_passthrough)
-	_check("showing restores drawing + fps", RenderingServer.render_loop_enabled and Engine.max_fps == 20)
+	draws = await _draws_per_second(1.0)
+	_check("showing resumes drawing (%.1f frames/s)" % draws, draws >= 15.0)
 	TankState.set_setting("always_on_top", false)
 	await _frames(2)
 	_check("always-on-top off", not win.always_on_top)
@@ -129,13 +155,14 @@ func _run() -> void:
 	# Covered tank (occlusion). First the logic, with the flag set by hand...
 	OS.set_environment("FISHTANK_OCCLUDED", "1")
 	await get_tree().create_timer(0.6).timeout
-	_check("covered tank pauses fish", _tank._fish_layer.process_mode == Node.PROCESS_MODE_DISABLED)
-	_check("covered tank idles", Engine.max_fps == _tank.IDLE_FPS)
+	where = fish0.exact_pos
+	draws = await _draws_per_second(1.0)
+	_check("covered tank pauses fish and draws nothing (%.1f frames/s)" % draws, draws < 0.5 and fish0.exact_pos == where)
 	_check("covered tank still clickable", not win.mouse_passthrough and _tank.visible)
 	OS.set_environment("FISHTANK_OCCLUDED", "0")
-	await get_tree().create_timer(1.0).timeout
-	_check("uncovered tank resumes", _tank._fish_layer.process_mode == Node.PROCESS_MODE_INHERIT
-		and Engine.max_fps == TankState.target_fps() and RenderingServer.render_loop_enabled)
+	await get_tree().create_timer(0.6).timeout
+	draws = await _draws_per_second(1.0)
+	_check("uncovered tank resumes (%.1f frames/s)" % draws, draws >= 15.0 and fish0.exact_pos != where)
 	# ...then for real on macOS: a window moved fully off-screen is reported as not visible.
 	if OS.get_name() == "macOS" and OS.has_environment("FISHTANK_OCCLUDED"):
 		var home := win.position
@@ -145,14 +172,14 @@ func _run() -> void:
 			await get_tree().create_timer(0.25).timeout
 			waited += 0.25
 		_check("macOS reports an off-screen tank as covered (%.2fs)" % waited, _tank._occluded)
-		await get_tree().create_timer(0.5).timeout  # it draws two more frames first
-		_check("...and the tank stops drawing", not RenderingServer.render_loop_enabled)
+		draws = await _draws_per_second(1.0)
+		_check("...and the tank stops drawing (%.1f frames/s)" % draws, draws < 0.5)
 		win.position = home
 		waited = 0.0
 		while _tank._occluded and waited < 5.0:
 			await get_tree().create_timer(0.25).timeout
 			waited += 0.25
-		_check("bringing it back resumes it (%.2fs)" % waited, not _tank._occluded and RenderingServer.render_loop_enabled)
+		_check("bringing it back resumes it (%.2fs)" % waited, not _tank._occluded)
 		TankState.settings.window_position = [home.x, home.y]
 		# Hiding while covered (drawing already stopped) must still clear the screen.
 		win.position = Vector2i(-20000, -20000)
@@ -392,6 +419,20 @@ func _screen_water_fraction(area := Rect2i()) -> float:
 			if c.b > 0.4 and c.b < 0.65 and c.g > 0.22 and c.g < 0.4 and c.r < 0.25:
 				water += 1
 	return float(water) / total
+
+
+func _draws_per_second(seconds: float) -> float:
+	var f0 := Engine.get_frames_drawn()
+	var t0 := Time.get_ticks_msec()
+	await get_tree().create_timer(seconds).timeout
+	return (Engine.get_frames_drawn() - f0) / ((Time.get_ticks_msec() - t0) / 1000.0)
+
+
+func _ticks_per_second(seconds: float) -> float:
+	var k0: int = _tank.tick_count
+	var t0 := Time.get_ticks_msec()
+	await get_tree().create_timer(seconds).timeout
+	return (_tank.tick_count - k0) / ((Time.get_ticks_msec() - t0) / 1000.0)
 
 
 ## Mouse events in tank pixels, converted to window pixels like real OS events.

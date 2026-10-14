@@ -6,7 +6,8 @@ extends Node2D
 ## flip, right-click to remove, Esc to finish. The tray / menu bar icon has the same menu.
 ##
 ## Debug: `godot --path . -- --screenshot=/tmp/tank.png` saves a frame after 3 s and quits.
-## Add `--debug-feed` to drop food, `--debug-settings[=tab]` to open (and capture) the settings window.
+## Add `--debug-feed` to drop food, `--debug-settings[=tab]` to open (and capture) the settings window,
+## `--debug-close-settings-after=SECONDS` to close it again.
 
 const SettingsWindow := preload("res://scripts/settings_window.gd")
 const TankAudio := preload("res://scripts/tank_audio.gd")
@@ -17,12 +18,16 @@ const BubbleLayer := preload("res://scripts/bubble_layer.gd")
 const DRAG_THRESHOLD := 4.0
 const WINDOW_POLL := 0.5  # seconds between checks for a moved window
 const OCCLUSION_POLL := 0.25  # seconds between checks of the native "can anyone see us?" flag
-## Never tick slower than this, even when idle. Godot's frame cap sleeps the main thread, and
-## macOS needs that thread to answer menu-bar clicks: at 1 tick a second the whole menu bar
-## stalled (see tests/responsiveness.sh). 10/s is as responsive as a visible tank for ~1% CPU.
-const IDLE_FPS := 10
-## While one of our menus is open, so its highlight follows the mouse smoothly.
-const MENU_FPS := 60
+## Timing model (v0.4): Godot runs in low-processor mode with no frame cap. It handles input
+## every few milliseconds and redraws a window only when something in it changed, so the
+## settings window and menus are never held back by the tank. The tank animates on its own
+## clock: _tick() steps fish, food, bubbles and plants at TankState.target_fps(), and between
+## ticks nothing changes, so nothing is redrawn. Hidden or covered, nothing steps at all.
+## (A frame cap is not used for power saving: on macOS it sleeps the main thread, which made
+## menus laggy and, at 1 fps, froze the menu bar; see v0.2.3.)
+const ACTIVE_SLEEP_USEC := 6900  # ~145 input checks a second
+const IDLE_SLEEP_USEC := 33000  # hidden/covered: ~30 a second, input within 33 ms
+const MAX_TICK := 0.25  # after a stall, don't let fish jump more than this many seconds
 const GRIP_SIZE := 8  # bottom-right resize handle, in tank pixels
 
 var tank_size := TankState.DEFAULT_TANK
@@ -49,8 +54,9 @@ var _hidden := false  # the player hid the tank
 var _occluded := false  # macOS says no Fishtank window is visible (covered, other Space, locked...)
 var _occlusion_poll := 0.0
 var _menu_open := false
-var _power_generation := 0  # bumped on every power-state change; cancels stale waits
-var _screen_shows_tank := true  # what the last frame drawn before we stopped drawing showed
+var _tick_accum := 0.0
+var _hunger_accum := 0.0
+var tick_count := 0  # ticks so far (tests measure the tank's animation rate with this)
 var _screenshot_path := ""
 
 # Pointer state
@@ -92,39 +98,67 @@ func _ready() -> void:
 			get_tree().create_timer(3.0).timeout.connect(_take_screenshot)
 		elif arg == "--debug-feed":
 			get_tree().create_timer(0.5).timeout.connect(func(): feed_at(tank_size.x / 2.0, 8))
+		elif arg.begins_with("--debug-close-settings-after="):
+			var after := float(arg.get_slice("=", 1))
+			get_tree().create_timer(after).timeout.connect(func(): if _settings: _settings.hide())
 		elif arg.begins_with("--debug-settings"):
 			_open_settings.call_deferred()
 			if "=" in arg:
 				(func(): _settings.tabs.current_tab = int(arg.get_slice("=", 1))).call_deferred()
 
 
+## Runs every loop iteration (~145/s): keep it cheap. Animation happens in _tick().
 func _process(delta: float) -> void:
 	_poll_occlusion(delta)
+	_poll_window_position(delta)
 	if _hidden or _occluded:
-		# Nobody can see the tank: nothing to draw or animate; fish just keep getting hungry.
-		for f in TankState.fish:
-			f.hunger = minf(1.0, f.hunger + TankState.HUNGER_PER_SECOND * delta)
+		# Nobody can see the tank: nothing to animate (so nothing is redrawn); fish just keep
+		# getting hungry (accrued in batches; it changes very slowly).
+		_hunger_accum += delta
+		if _hunger_accum >= 1.0:
+			for f in TankState.fish:
+				f.hunger = minf(1.0, f.hunger + TankState.HUNGER_PER_SECOND * _hunger_accum)
+			_hunger_accum = 0.0
+		_tick_accum = 0.0
 		return
+	# Fixed steps, carrying the remainder, so the tank animates at exactly target_fps on average
+	# even though loop iterations don't line up with it.
+	var interval := 1.0 / TankState.target_fps()
+	_tick_accum = minf(_tick_accum + delta, MAX_TICK)
+	if _tick_accum >= interval:
+		_tick_accum -= interval
+		_tick(interval)
 
-	_school_timer -= delta
+
+## One animation step of the whole tank.
+func _tick(dt: float) -> void:
+	tick_count += 1
+	_school_timer -= dt
 	if _school_timer <= 0.0:
 		_school_timer = randf_range(4.0, 8.0)
 		for species in SpeciesDB.SPECIES:
 			if SpeciesDB.SPECIES[species].schooling:
 				_school_targets[species] = random_point_in_band(SpeciesDB.SPECIES[species].depth)
+	_run_emitters(dt)
+	_bubble_layer.step(dt)
+	_decor.step(dt)
+	for food: Food in _food_layer.get_children():
+		food.step(dt)
+	for f: Fish in _fish_cache:
+		f.step(dt)
 
-	_run_emitters(delta)
-	_update_hover()
 
-	# Native window drags don't report back, so persist the position when it changes.
+## Native window drags don't report back, so persist the position when it changes.
+func _poll_window_position(delta: float) -> void:
 	_window_poll -= delta
-	if _window_poll <= 0.0:
-		_window_poll = WINDOW_POLL
-		var pos := get_window().position
-		if pos != _last_window_pos:
-			_last_window_pos = pos
-			TankState.settings.window_position = [pos.x, pos.y]
-			TankState.queue_save()
+	if _window_poll > 0.0:
+		return
+	_window_poll = WINDOW_POLL
+	var pos := get_window().position
+	if pos != _last_window_pos:
+		_last_window_pos = pos
+		TankState.settings.window_position = [pos.x, pos.y]
+		TankState.queue_save()
 
 
 # --- Scene ----------------------------------------------------------------
@@ -335,6 +369,7 @@ func _on_mouse_button(mb: InputEventMouseButton) -> void:
 
 
 func _on_mouse_motion(mm: InputEventMouseMotion) -> void:
+	_update_hover()
 	if _resizing:
 		# The window's top-left stays put while resizing, so the pointer position gives the size.
 		TankState.set_tank_size(Vector2i((mm.position + _resize_grab).round()))
@@ -386,6 +421,7 @@ func _draw_overlay() -> void:
 func _on_decorate_mode() -> void:
 	_rebuild_frame()
 	_hover_decor = -1
+	_update_hover()
 	_overlay.queue_redraw()
 
 
@@ -443,45 +479,17 @@ func _poll_occlusion(delta: float) -> void:
 		_apply_power_state()
 
 
-## Godot can't hide its main window, so "hidden" means: nothing drawn, clicks pass through,
-## and the main loop idles. A covered tank (occluded) idles the same way but stays clickable.
-## The bubbling sound keeps playing either way (it has its own thread).
+## Godot can't hide its main window, so "hidden" means: nothing drawn and clicks pass through.
+## Hidden or covered, the tank stops stepping, so low-processor mode stops redrawing it, and
+## the loop checks for input a little less often. The bubbling sound keeps playing (it has its
+## own thread).
 func _apply_power_state() -> void:
-	_power_generation += 1
-	var generation := _power_generation
 	var paused := _hidden or _occluded
-	for layer in [_fish_layer, _food_layer, _bubble_layer]:
-		layer.process_mode = Node.PROCESS_MODE_DISABLED if paused else Node.PROCESS_MODE_INHERIT
 	var settings_open := _settings != null and _settings.visible
-	var idle := paused and not settings_open
-	var fps := TankState.target_fps()
-	if idle:
-		fps = IDLE_FPS
-	if _menu_open:
-		fps = MENU_FPS
-	# macOS menus are native, so Godot can stop drawing entirely while idle. Elsewhere Godot
-	# draws the tray menu itself, so it keeps rendering.
-	var stop_drawing := idle and OS.get_name() == "macOS"
-	if not stop_drawing:
-		RenderingServer.render_loop_enabled = true
-		_screen_shows_tank = visible
-		Engine.max_fps = fps
-		return
-	if _screen_shows_tank != visible:
-		# The tank was just hidden (or shown): draw two more frames first (the window is
-		# double-buffered) so the screen matches, e.g. an empty window after "Show Tank" is
-		# unchecked. Stopping straight away left the last frame of fish frozen on screen.
-		# While covered, macOS draws nothing, so this finishes once the window is uncovered.
-		RenderingServer.render_loop_enabled = true
-		Engine.max_fps = IDLE_FPS if _occluded else TankState.target_fps()
-		for i in 2:
-			await RenderingServer.frame_post_draw
-		if generation != _power_generation:
-			return  # something changed while we waited; that call has taken over
-		_screen_shows_tank = visible
-	# Covered with nothing changed: nobody can see the last frame, so stop straight away.
-	RenderingServer.render_loop_enabled = false
-	Engine.max_fps = fps
+	var idle := paused and not settings_open and not _menu_open
+	OS.low_processor_usage_mode = true
+	OS.low_processor_usage_mode_sleep_usec = IDLE_SLEEP_USEC if idle else ACTIVE_SLEEP_USEC
+	Engine.max_fps = 0
 
 
 func _on_menu_open_changed(open: bool) -> void:

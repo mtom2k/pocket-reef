@@ -7,8 +7,13 @@ A tiny pixel-art aquarium that floats on your desktop, bubbles softly in the bac
 ## ✨ Features
 
 - 🪟 **Floating tank.** It's see-through and always on top: drag it anywhere, and resize it from the bottom-right corner.
-- 🐟 **11 species, 32 colour variants:** goldfish, oranda goldfish, clownfish, betta, angelfish, guppies, neon tetras, corydoras, hillstream loaches, cherry shrimp and snails.
-- 🧠 **Real habits.** Clownfish move into anemones, loaches cling to the glass, corydoras dart up for air, and tetras school.
+- 🐟 **29 species, 94 colour variants**, with colours checked against photos of the real fish:
+  - **Freshwater:** neon, cardinal and rummynose tetras, zebra danios, guppies, platies, mollies, cherry barbs, goldfish, orandas, bettas, dwarf gouramis, angelfish, discus, German blue rams.
+  - **Bottom and glass:** corydoras, kuhli loaches, hillstream loaches, bristlenose plecos.
+  - **Oddballs:** pea puffers and axolotls.
+  - **Reef:** clownfish, blue and yellow tangs, royal grammas, mandarin dragonets.
+  - **Clean-up crew:** cherry shrimp, ghost shrimp, snails.
+- 🧠 **Real habits.** Clownfish move into anemones, royal grammas claim a rock arch, loaches and plecos cling to the glass, corydoras and axolotls dart up for air, and tetras and danios school.
 - 🪸 **27 decorations and 7 floors.** Drag pieces around in decorate mode.
 - 🍤 **Click to feed.** Fish get hungry, even while the app is closed, but they never die.
 - 🫧 **Ambient bubbling** with volume and mute.
@@ -26,6 +31,10 @@ A tiny pixel-art aquarium that floats on your desktop, bubbles softly in the bac
 |---|---|---|
 | ![Sand](docs/screenshots/tank_sand.png) | ![Rainbow](docs/screenshots/tank_rainbow.png) | ![Nano](docs/screenshots/tank_nano.png) |
 
+| Community tank | Reef tank |
+|---|---|
+| ![Community](docs/screenshots/tank_community.png) | ![Reef](docs/screenshots/tank_reef.png) |
+
 ## 📦 Install (macOS)
 
 1. Build the disk image with `tools/release/build_macos.sh` (it appears at `build/PocketReef-<version>.dmg`).
@@ -39,7 +48,7 @@ A tiny pixel-art aquarium that floats on your desktop, bubbles softly in the bac
 ```bash
 brew install --cask godot                                  # Godot 4.7
 godot --path .                                             # run it
-godot --path . res://tests/smoke_test.tscn -- --save-file=user://smoke_test.json       # 105 checks
+godot --path . res://tests/smoke_test.tscn -- --save-file=user://smoke_test.json       # 115 checks
 godot --path . res://tests/settings_layout.tscn -- --save-file=user://layout.json     # nothing cut off, 420×400 → 1200×900
 tests/responsiveness.sh                                    # menu-bar responsiveness guard
 ```
@@ -55,7 +64,7 @@ tests/responsiveness.sh                                    # menu-bar responsive
 
 ## 🗺️ Status
 
-**v0.5.1** prototype. 🍎 macOS is tested; 🪟 Windows builds but hasn't been tested yet.
+**v0.6.0** prototype. 🍎 macOS is tested; 🪟 Windows builds but hasn't been tested yet.
 
 **Next:** a Windows build, Developer ID signing, eating animations, and tapping the glass.
 

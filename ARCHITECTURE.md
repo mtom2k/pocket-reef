@@ -46,12 +46,12 @@ docs/                                  style guide, screenshots
 |---|---|
 | `tank_state.gd` | **Autoload, the single source of truth.** Holds settings, fish, decor and tank size; handles save/load (`user://tank.json`), migrations, stocking and capacity rules, and emits signals. |
 | `main.gd` | The tank window: builds the layers, runs the clock (`_tick`), handles input, window size and position, the power state, and occlusion polling. |
-| `fish.gd` | One fish. Decides 10× a second and moves on every tick. Habits: `swim`, `bottom`, `crawl`, `glass`, plus an optional `host` (a decoration it lives near). |
+| `fish.gd` | One fish. Decides 10× a second and moves on every tick. Habits: `swim`, `bottom`, `crawl`, `glass`, plus an optional `host` (a decoration it lives near: clownfish → anemone, royal gramma → rock arch) and `air` (`false` stops a bottom dweller swimming up to breathe). |
 | `food.gd` | A sinking flake. |
 | `bubble_layer.gd` | All bubbles, drawn by a single node. |
 | `decor_layer.gd` | Places decorations on the gravel; handles hit-testing, plant sway, bubble emitters and `find_type`. |
 | `tank_renderer.gd` | Draws the water, the 7 floors and the glass frame for any tank size. Hash-based, so resizing is stable. |
-| `species_db.gd` · `decor_db.gd` | Static catalogues of species (habit, speed, bioload, depth band, variants) and decorations (sway, sink, bubbles, categories). |
+| `species_db.gd` · `decor_db.gd` | Static catalogues of species (habit, speed, bioload, depth band, variants) and decorations (sway, sink, bubbles, categories). The species order is the order of the "Add fish" menu: freshwater, bottom dwellers, oddballs, reef, then invertebrates. |
 | `settings_window.gd` · `ui_theme.gd` | The native settings window (Fish, Decor, Tank and About tabs) and its theme. It is responsive: `_reflow()` picks grid column counts from the width, label/control rows stack below 600 logical px, and zoom is 0.9–1.35× of the design size. |
 | `tray.gd` | Menu-bar/tray `StatusIndicator` plus a right-click `PopupMenu`. |
 | `tank_audio.gd` | Looping bubbler and occasional pops. |
@@ -115,6 +115,8 @@ tools/spritegen/palette.py  ENDESGA 32                       ┘        → art/
 uv run --with pillow tools/spritegen/export_godot.py         # regenerates everything the game uses
 ```
 
+A colour morph is a set of ramps (`body`, `belly`, `p1`, `p2`, `fin`, optional `tail`, `wen`, `patches`, `eye`). A morph whose markings differ, not just its colours (panda corydoras, leopard danio, sunset platy), also brings its own `shape`: the species silhouette with markings painted on by `_mark()` in `species.py`.
+
 Rules are in [docs/style-guide.md](docs/style-guide.md).
 
 ## Native plugin (macOS)
@@ -139,7 +141,7 @@ Rules are in [docs/style-guide.md](docs/style-guide.md).
 
 | Test | What it covers |
 |---|---|
-| `tests/smoke_test.tscn` | Boots the real tank and drives everything (105 checks): settings, species, decor, floors, resize, input, timing (frames drawn per mode), hidden and covered states (including real screen captures), save and migrations. Refuses to run against the real save file. |
+| `tests/smoke_test.tscn` | Boots the real tank and drives everything (115 checks): settings, species (every species spawns, every morph has a sprite, the habits work), decor, floors, resize, input, timing (frames drawn per mode), hidden and covered states (including real screen captures), save and migrations. Refuses to run against the real save file. |
 | `tests/settings_layout.tscn` | Opens the settings window at 420×400 up to 1200×900 and fails if any control on any tab sticks out past the window. Can save screenshots with `--shots=DIR`. |
 | `tests/responsiveness.sh` | Hidden tank must answer Apple Events in under 600 ms. Guards against the v0.2.2 menu-bar freeze. |
 | `tests/perf_probe.tscn` | CPU, memory, frames drawn and loop rate per scenario (`--scenario`, `--performance`, `--zoom`, `--sleep-usec`). |

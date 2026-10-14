@@ -21,7 +21,8 @@ def build_sprites() -> dict[str, Image.Image]:
     out = {}
     for name, sp in SPECIES.items():
         for variant, ramps in sp["variants"].items():
-            img = render(sp["shape"], ramps, sp.get("fin_roots"))
+            # A morph may bring its own silhouette (same outline, different markings).
+            img = render(ramps.get("shape", sp["shape"]), ramps, sp.get("fin_roots"))
             key = name if variant == "default" else f"{name}_{variant}"
             img.save(os.path.join(SPRITES, f"{key}.png"))
             out[key] = img
@@ -31,7 +32,7 @@ def build_sprites() -> dict[str, Image.Image]:
 def sheet(sprites: dict[str, Image.Image], scale: int = 8, pad: int = 4) -> Image.Image:
     cell_w = max(s.width for s in sprites.values()) + pad * 2
     cell_h = max(s.height for s in sprites.values()) + pad * 2
-    cols = 3
+    cols = 6
     rows = -(-len(sprites) // cols)
     img = Image.new("RGBA", (cell_w * cols, cell_h * rows), rgba("deep_blue"))
     for i, s in enumerate(sprites.values()):

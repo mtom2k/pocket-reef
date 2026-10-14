@@ -4,9 +4,11 @@ extends Node2D
 ## species does), avoid crowding, and chase food when hungry. Renders snapped to whole pixels.
 ##
 ## Habits (SpeciesDB): "swim" roams open water; "bottom" dashes and rests along the gravel and
-## occasionally darts up for air; "crawl" walks on the gravel and never leaves it; "glass" clings
-## to the front glass (drawn in front of everything) and glides slowly in any direction.
-## A species with a "host" decoration (clownfish -> anemone) stays close to it when there is one.
+## occasionally darts up for air (unless the species has "air": false); "crawl" walks on the gravel
+## and never leaves it; "glass" clings to the front glass (drawn in front of everything) and glides
+## slowly in any direction.
+## A species with a "host" decoration (clownfish -> anemone, royal gramma -> rock arch) stays close
+## to it when there is one.
 ##
 ## Performance: decisions (targets, neighbours, finding food) run THINK_INTERVAL apart, staggered
 ## across fish; movement, chasing a flake and eating it still happen every frame.
@@ -230,7 +232,8 @@ func _steer_glass(delta: float, speed: float) -> Vector2:
 
 ## Dash along the bottom, rest, repeat; every minute or two, dart up for a gulp of air.
 func _steer_bottom(delta: float, speed: float) -> Vector2:
-	_air_in -= delta
+	if spec.get("air", true):  # corydoras and axolotls gulp air; kuhlis and mandarins don't
+		_air_in -= delta
 	if _air_in <= 0.0 and not _going_for_air:
 		_going_for_air = true
 		_target = Vector2(exact_pos.x + randf_range(-10.0, 10.0), tank.water_top() + 4.0)

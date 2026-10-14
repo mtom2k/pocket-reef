@@ -15,6 +15,7 @@ Silhouette legend (fish face RIGHT):
   W  wen             (an oranda's bumpy head growth: own "wen" ramp, lumpy texture)
 
 Optional ramps:
+  "tail":    a separate fin ramp for the tail (`f`), e.g. a blue tang's yellow tail.
   "patches": {"ramp": {...}, "seed": n, "count": k}  blotches of a second colour over the
              body and belly (sarasa goldfish, panda oranda...). Deterministic per seed.
 
@@ -128,9 +129,10 @@ def render(rows: list[str], ramps: dict, fin_roots: dict | None = None,
             elif ch == "F":
                 px[x, y] = _c(fin["accent"])
             elif ch in FIN_LAYER:
+                fr = ramps.get("tail", fin) if ch == "f" else fin
                 front_of_body = ch == "h" and any(n in BODYISH for n in nb)
                 if edge or over_lower or front_of_body:
-                    px[x, y] = _c(fin["outline"])
+                    px[x, y] = _c(fr["outline"])
                     continue
                 tone = "mid"
                 if ch in fin_roots:
@@ -143,7 +145,7 @@ def render(rows: list[str], ramps: dict, fin_roots: dict | None = None,
                         tone = "ray"
                     elif r < fin_reach[root] * 0.35:
                         tone = "inner"
-                px[x, y] = _c(fin.get(tone, fin["mid"]))
+                px[x, y] = _c(fr.get(tone, fr["mid"]))
             elif ch == "W":
                 wen = ramps.get("wen", body)
                 if edge:

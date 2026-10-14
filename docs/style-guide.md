@@ -25,7 +25,7 @@ Use only **[ENDESGA 32](https://lospec.com/palette-list/endesga-32)**. The file 
 | Rocks / glass | `navy`, `dusk`, `slate`, `steel`, `silver` |
 | Darkest allowed | `ink` (#181425). **Never pure black.** |
 
-**Transparency** is allowed only for fins (alpha 150–235), glass (40–200) and light effects. Everything else is fully opaque.
+**Transparency** is allowed only for fins (alpha 150–235), glass (40–200) and light effects. Everything else is fully opaque. The one exception is see-through animals (ghost and amano shrimp), whose bodies are drawn on the fin layer at alpha 80–215.
 
 ## 3. Sizes
 
@@ -35,7 +35,7 @@ Small fish are drawn slightly larger than true scale so they stay readable. Fish
 |---|---|---|
 | Tiny | ≤ 18 × 6 | Cherry shrimp 18 × 6 |
 | Small | 12–18 × 5–11 | Neon tetra 16 × 7, Corydoras 15 × 8, Guppy 17 × 11 (a big tail is the point) |
-| Medium | 24–32 × 16–27 | Goldfish 30 × 21, Betta 30 × 23, Angelfish 22 × 27 (tall) |
+| Medium | 19–32 × 9–27 | Goldfish 30 × 21, Betta 30 × 23, Angelfish 22 × 27 (tall), Discus 23 × 21 (round), Yellow tang 19 × 16, Axolotl 22 × 9 (long) |
 
 ## 4. Lighting & shading
 
@@ -98,7 +98,12 @@ Small fish are drawn slightly larger than true scale so they stay readable. Fish
 
 ## 11. Colour variants (morphs)
 
-A morph reuses a species' silhouette with a different colour ramp (see the `variants` in `tools/spritegen/species.py`). Current examples: goldfish **default / calico**, betta **red / royal blue**. This makes "collect colour morphs" an inexpensive feature to add.
+A morph reuses a species' silhouette with a different colour ramp (see the `variants` in `tools/spritegen/species.py`). Examples: goldfish **orange / sarasa / calico / black**, betta **red / royal blue / koi / black orchid**. This makes "collect colour morphs" an inexpensive feature to add.
+
+- **Research first.** Base each morph on photos of the real fish (v0.6 used aquarium-trade and species references) and note in a comment what defines it, e.g. `# Mickey Mouse: a black spot with two "ears" at the tail root`.
+- **Stay in the palette.** Map each real colour to the nearest ramp. Where the palette has no exact match (turquoise discus, magenta royal gramma), pick the closest hue that still reads at 1×: `cyan` for turquoise, `orchid` and `plum` for magenta and purple.
+- **Markings belong to the morph.** When a morph's pattern differs (panda corydoras, leopard danio, sunset platy), give it its own `shape` with the markings painted on, so the base silhouette and the other morphs stay unchanged.
+- **A cousin can be a morph.** A closely related fish with the same outline can be a morph of its relative, e.g. the green neon (cardinal tetra), powder blue tang (blue tang), and purple and scopas tangs (yellow tang).
 
 ## 12. Pipeline
 

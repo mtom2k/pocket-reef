@@ -104,3 +104,21 @@ This is the most important decision. History:
   - Long captions shorten with "…".
   - Zoom = window width ÷ design width, clamped to **0.9–1.35**: bigger windows get bigger text, but small ones never drop below 90% (about 13.5 px), so text stays readable.
 - **Consequences:** `tests/settings_layout.tscn` must pass. A new wide control needs either a reflow rule or a minimum width under about 300 px.
+
+### 20. A bigger roster from photo-checked colours, kept in the palette
+- **Context (v0.6):** the tank had 11 species and 29 morphs. We wanted a much larger, recognisable collection, including reef fish and oddballs.
+- **Decision:**
+  - Add 18 species in four groups, chosen because they look distinct and are popular:
+    - **Community:** platy, molly, zebra danio, cherry barb, cardinal and rummynose tetras.
+    - **Showpieces:** discus, dwarf gourami, bristlenose pleco, German blue ram.
+    - **Reef:** blue tang, yellow tang, royal gramma, mandarin dragonet.
+    - **Oddballs:** pea puffer, kuhli loach, axolotl, ghost shrimp.
+  - Give every species at least 3 morphs (2 where the real fish has no well-known colour forms). That makes 29 species and 94 morphs.
+  - Check each morph against photos and descriptions of the real fish, then map it to the nearest ENDESGA 32 ramp. No new colours (#2).
+  - Reuse habits instead of inventing new ones: the pleco is a `glass` fish, kuhlis and mandarins are `bottom` fish that don't gulp air (`"air": false`), and the royal gramma has a `host` (the rock arch), as the clownfish has the anemone.
+  - The renderer gained two small options: a morph may bring its own `shape` (markings), and a `tail` ramp may differ from the other fins.
+- **Why:** distinct silhouettes and true-to-life markings matter more than exact hues at this size, and the palette keeps the tank cohesive. A cousin with the same outline (green neon, powder blue tang, purple tang) costs one morph instead of one species.
+- **Consequences:**
+  - Freshwater and reef fish can share a tank. It's a cozy toy (#4), so realism stops at habits and colours.
+  - See-through animals are an exception to the transparency rule (see the style guide).
+  - The smoke test now checks that every species spawns and every morph has a sprite, so a missing PNG or import fails the build.

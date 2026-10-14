@@ -51,11 +51,14 @@ To package, install the **Godot 4.7.2 export templates**: Editor → Manage Expo
 ## Checklists
 
 **Add a species**
-1. In `tools/spritegen/species.py`, add the ASCII silhouette, `fin_roots` and variant ramps. The legend is in `render.py`.
+1. In `tools/spritegen/species.py`, add the ASCII silhouette, `fin_roots` and variant ramps. The legend is in `render.py`. Look at photos of the real fish first and map each colour to the nearest palette ramp.
+   - A morph with different markings gets its own `shape` (paint them onto the base silhouette with `_mark`).
+   - A tail that differs from the other fins gets a `tail` ramp.
+   - Pattern pixels (`1`, `2`) directly above or below a fin are drawn as outline, so use fin-accent pixels (`F`) for spots on a see-through body.
 2. Regenerate the art, check `art/previews/fish_sheet.png`, then run `godot --headless --path . --import`.
-3. In `scripts/species_db.gd`, add the name, variants, habit (`swim`, `bottom`, `crawl` or `glass`), speed, bioload, max, depth, wobble and blurb. Optional fields: `host`, `food_sight`.
+3. In `scripts/species_db.gd`, add the name, variants, habit (`swim`, `bottom`, `crawl` or `glass`), speed, bioload, max, depth, wobble and blurb. Optional fields: `host`, `food_sight`, `air`. Its position in `SPECIES` is its position in the "Add fish" menu.
 4. If it needs new behaviour, add a habit in `fish.gd` (`_steer_*`).
-5. Add smoke checks, update the README counts, and add a DECISIONS entry if it's notable.
+5. The smoke test already checks that every species spawns and every morph has a sprite. Add checks for any new behaviour, update the README counts, and add a DECISIONS entry if it's notable.
 
 **Add a decoration**
 1. In `tools/spritegen/decor.py`, add an ASCII shape or a procedural function to `build()`.

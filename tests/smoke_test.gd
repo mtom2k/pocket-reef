@@ -251,6 +251,62 @@ func _run() -> void:
 	TankState.reset_decor()
 	await _frames(3)
 
+	# v0.6 species: every species spawns, every colour morph has a sprite, and the new habits work
+	var no_sprite := []
+	for key in SpeciesDB.SPECIES:
+		for variant in SpeciesDB.SPECIES[key].variants:
+			if not ResourceLoader.exists(SpeciesDB.texture_path(key, variant)):
+				no_sprite.append("%s/%s" % [key, variant])
+	_check("every colour morph has a sprite %s" % [no_sprite], no_sprite.is_empty())
+	var no_spawn := []
+	for key in SpeciesDB.SPECIES:
+		if key == "goldfish":
+			continue
+		var reason := TankState.add_fish(key, SpeciesDB.SPECIES[key].variants.keys().back())
+		await _frames(2)
+		if reason != "" or _tank.fish_nodes().size() != 2:
+			no_spawn.append("%s (%s)" % [key, reason])
+		for f in TankState.fish.duplicate():
+			if f.species != "goldfish":
+				TankState.remove_fish(f.id)
+		await _frames(1)
+	_check("all %d species spawn %s" % [SpeciesDB.SPECIES.size(), no_spawn], no_spawn.is_empty())
+	_check("royal gramma added", TankState.add_fish("royal_gramma", "default") == "")
+	_check("bristlenose added", TankState.add_fish("bristlenose", "calico") == "")
+	_check("kuhli loaches added", TankState.add_fish("kuhli_loach", "default", 2) == "")
+	_check("ghost shrimp added", TankState.add_fish("ghost_shrimp", "amano", 2) == "")
+	TankState.add_decor("rock_arch", 0.3)
+	await _frames(2)
+	var arch: Rect2 = _tank.decor_home("rock_arch")
+	var kuhli_air := {}
+	for f: Fish in _tank.fish_nodes():
+		if f.data.species == "kuhli_loach":
+			kuhli_air[f] = f._air_in
+	await get_tree().create_timer(9.0).timeout
+	var gramma_dist := 0.0
+	var pleco_on_glass := true
+	var kuhlis_stay_down := not kuhli_air.is_empty()
+	var ghosts_down := true
+	for f: Fish in _tank.fish_nodes():
+		match f.data.species:
+			"royal_gramma":
+				gramma_dist = f.exact_pos.distance_to(arch.get_center())
+			"bristlenose":
+				pleco_on_glass = pleco_on_glass and f.z_index > 0
+			"kuhli_loach":
+				kuhlis_stay_down = kuhlis_stay_down and f._air_in == kuhli_air[f] and not f._going_for_air
+			"ghost_shrimp":
+				ghosts_down = ghosts_down and absf(f.exact_pos.y + f._half.y - 1.0 - _tank.floor_y()) < 0.01
+	_check("royal gramma moves into the rock arch (%.0f px away)" % gramma_dist, arch.has_area() and gramma_dist < 40.0)
+	_check("bristlenose clings to the front glass", pleco_on_glass)
+	_check("kuhli loaches never swim up for air", kuhlis_stay_down)
+	_check("ghost shrimp walk on the gravel", ghosts_down)
+	for f in TankState.fish.duplicate():
+		if f.species != "goldfish":
+			TankState.remove_fish(f.id)
+	TankState.reset_decor()
+	await _frames(3)
+
 	# Decorations
 	_check("castle added", TankState.add_decor("castle", 0.5) == "")
 	_check("chest added", TankState.add_decor("treasure_chest", 0.2) == "")

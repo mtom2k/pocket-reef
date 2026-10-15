@@ -123,8 +123,11 @@ static func _set_macos(enabled: bool) -> String:
 static func _set_windows(enabled: bool) -> String:
 	var args := ["delete", WINDOWS_RUN_KEY, "/v", _name(), "/f"]
 	if enabled:
+		# The value must be the quoted exe path. Godot wraps arguments that contain spaces in
+		# quotes without escaping quotes inside them, so plain quotes reach reg.exe doubled up
+		# ("Invalid syntax"); \" survives as a literal quote.
 		args = ["add", WINDOWS_RUN_KEY, "/v", _name(), "/t", "REG_SZ",
-			"/d", "\"%s\"" % OS.get_executable_path(), "/f"]
+			"/d", "\\\"%s\\\"" % OS.get_executable_path().replace("/", "\\"), "/f"]
 	var code := OS.execute("reg", args)
 	if code != 0 and enabled:
 		return "Couldn't register with Windows startup (reg exited with %d)." % code

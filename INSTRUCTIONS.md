@@ -13,6 +13,15 @@ godot --headless --path . --import   # first run: import assets and register cla
 
 To package, install the **Godot 4.7.2 export templates**: Editor → Manage Export Templates, or put the `macos.zip` from the release `.tpz` into `~/Library/Application Support/Godot/export_templates/4.7.2.stable/`.
 
+## Setup (Windows)
+
+- **Godot 4.7.2:** put `godot.exe` on your PATH (or set `GODOT`). The commands below work in PowerShell or Git Bash.
+- **uv:** runs the Python art tools, and makes the installer's icon.
+- **Inno Setup 6:** builds the installer. A per-user install is enough: `innosetup-6.x.exe /CURRENTUSER`.
+- **Export templates:** Editor → Manage Export Templates, or copy the `windows_*.exe` files and `version.txt` from the release `.tpz` into `%APPDATA%\Godot\export_templates\4.7.2.stable\`.
+- On first run, import the assets: `godot --headless --path . --import`.
+- The macOS plugin is skipped on Windows. Godot logs three "GDExtension" errors at startup when run from the project; ignore them.
+
 ## Everyday commands
 
 | Task | Command |
@@ -22,11 +31,13 @@ To package, install the **Godot 4.7.2 export templates**: Editor → Manage Expo
 | Smoke test (must pass) | `godot --path . res://tests/smoke_test.tscn -- --save-file=user://smoke_test.json` |
 | Settings layout (must pass) | `godot --path . res://tests/settings_layout.tscn -- --save-file=user://layout.json` |
 | Responsiveness (macOS, must pass) | `tests/responsiveness.sh` |
+| Windows by hand (must pass) | Run the app and check the tray icon, right-click menu, feeding, dragging, resizing, hiding and restoring from the tray |
 | Performance | `godot --path . res://tests/perf_probe.tscn -- --save-file=user://perf.json --scenario=busy` |
 | Regenerate all art | `uv run --with pillow tools/spritegen/export_godot.py` |
 | Regenerate sounds | `python3 tools/audiogen/bubbles.py` |
 | Rebuild the native plugin | `native/macos_agent/build.sh` |
 | Build the DMG | `tools/release/build_macos.sh` → `build/PocketReef-<version>.dmg` |
+| Build the Windows downloads | `powershell -ExecutionPolicy Bypass -File tools/release/build_windows.ps1` → `build/PocketReef-<version>-windows-setup.exe` and `-windows-portable.exe` |
 
 **Debug flags** (put them after `--`):
 - `--screenshot=PATH` saves a frame after 3 s (change the delay with `--screenshot-delay=S`).
@@ -75,6 +86,13 @@ To package, install the **Godot 4.7.2 export templates**: Editor → Manage Expo
 4. Install from the DMG and check it by hand: the tray menu, settings and feeding.
 5. Commit and tag `vX.Y.Z`.
 
+**Release (Windows)**
+1. Run the smoke and layout tests on Windows.
+2. Run `tools/release/build_windows.ps1`.
+3. Install with the setup, then check by hand: the tray icon, right-click menu, settings, feeding, and "Open at login" (it should add, then remove, `Pocket Reef` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`).
+4. Uninstall while the tank is running: it should quit, and the install folder should go.
+5. Upload both `.exe` files to the GitHub release with their SHA-256 hashes (the script prints them).
+
 ## Gotchas
 
 - **macOS window sizes in Godot are pixels:** multiply logical sizes by `DisplayServer.screen_get_scale()`.
@@ -84,6 +102,9 @@ To package, install the **Godot 4.7.2 export templates**: Editor → Manage Expo
 - **New `class_name` scripts and assets** need `godot --headless --path . --import` before CLI runs.
 - **In shell scripts, never `rm` a path built from unchecked variables.** Use `"${VAR:?}"`.
 - **The bundle id** `com.pocketreef.app` appears in three places: `export_presets.cfg`, `login_item.gd` and `agent.m`.
+- **Windows: PowerShell doesn't wait for `godot.exe`,** because it's a GUI program. Pipe its output (`| Out-Host`) when a script needs it to finish first.
+- **Windows: `OS.execute` wraps arguments that contain spaces in quotes, but doesn't escape quotes inside them.** To pass a literal quote (for example to `reg`), write `\"`. See `login_item.gd`.
+- **Windows "Open at login"** writes the exe's path, so a moved portable `.exe` registers again the next time it starts (`LoginItem.refresh`).
 
 ## Commits
 

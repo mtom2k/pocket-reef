@@ -122,3 +122,19 @@ This is the most important decision. History:
   - Freshwater and reef fish can share a tank. It's a cozy toy (#4), so realism stops at habits and colours.
   - See-through animals are an exception to the transparency rule (see the style guide).
   - The smoke test now checks that every species spawns and every morph has a sprite, so a missing PNG or import fails the build.
+
+### 21. Windows: a portable .exe plus a per-user installer
+- **Context (v0.6.0):** the code had Windows paths (tray, the `Run` key, DPI scaling), but nobody had run it on Windows. On a Windows 11 PC at 150% scaling, both tests passed and the tank, tray, menus, settings, dragging, resizing and hiding all worked. Two problems turned up:
+  - "Open at login" always failed. `OS.execute` wraps an argument that contains a space in quotes but doesn't escape the quotes inside it, so `reg` received the quoted exe path with its quotes doubled up and rejected it.
+  - The macOS plugin logs errors on Windows because its `.gdextension` has no Windows library.
+- **Decision:**
+  - Escape the quotes (`\"`) in the `reg add` value, which stores `"C:\…\Pocket Reef.exe"` exactly.
+  - Leave `native/` out of the Windows export, so the packaged app never tries to load the plugin.
+  - Ship two downloads, both built by `tools/release/build_windows.ps1`:
+    - **Portable:** one `.exe` with the game data embedded. It can run from anywhere and installs nothing.
+    - **Installer:** built with Inno Setup. It installs per user into `%LOCALAPPDATA%\Programs` with no administrator prompt (like the macOS app, it's a single-user toy). It adds a Start menu shortcut and an uninstaller.
+  - Before upgrading or uninstalling, the installer asks a running tank to quit, which saves it. The uninstaller also removes the "Open at login" entry. The tank save in `%APPDATA%` is kept.
+- **Consequences:**
+  - The `.exe` files are unsigned, so SmartScreen warns until they're code-signed (as #9 is for macOS).
+  - Only x86-64 is built. Godot has ARM64 templates, but they're untested.
+  - The tank doesn't yet pause when it's covered on Windows. It still pauses when hidden.

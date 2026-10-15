@@ -1,6 +1,6 @@
 # 🐠 Pocket Reef
 
-A tiny pixel-art aquarium that floats on your desktop, bubbles softly in the background, and lives in your menu bar.
+A tiny pixel-art aquarium that floats on your desktop, bubbles softly in the background, and lives in your menu bar (macOS) or system tray (Windows).
 
 ![Pocket Reef](docs/screenshots/hero.png)
 
@@ -18,7 +18,7 @@ A tiny pixel-art aquarium that floats on your desktop, bubbles softly in the bac
 - 🍤 **Click to feed.** Fish get hungry, even while the app is closed, but they never die.
 - 🫧 **Ambient bubbling** with volume and mute.
 - 🔋 **Light on power.** The tank pauses when hidden or covered, and the UI is never throttled.
-- 🚀 **Menu-bar app** with an "open at login" option.
+- 🚀 **Menu-bar / system-tray app** with an "open at login" option, on macOS and Windows.
 - 📐 **Settings window** that adapts to any size or screen: it reflows, zooms gently, and never cuts anything off.
 
 ## 📸 Screenshots
@@ -35,22 +35,35 @@ A tiny pixel-art aquarium that floats on your desktop, bubbles softly in the bac
 |---|---|
 | ![Community](docs/screenshots/tank_community.png) | ![Reef](docs/screenshots/tank_reef.png) |
 
-## 📦 Install (macOS)
+## 📦 Install
 
-1. Build the disk image with `tools/release/build_macos.sh` (it appears at `build/PocketReef-<version>.dmg`).
-2. Open it and drag **Pocket Reef** to **Applications**.
-3. Use the 🐠 icon in the menu bar for everything: show or hide the tank, feed, decorate, settings, quit.
+Download the latest build from [Releases](https://github.com/mtom2k/pocket-reef/releases).
+
+**🍎 macOS**
+1. Open `PocketReef-<version>.dmg` and drag **Pocket Reef** to **Applications**.
+2. Use the 🐠 icon in the menu bar for everything: show or hide the tank, feed, decorate, settings, quit.
 
 > ⚠️ Builds are ad-hoc signed, so other Macs will warn about an "unidentified developer" until the app is signed with a Developer ID and notarized.
+
+**🪟 Windows 10 and 11 (64-bit)**
+- **Installer:** run `PocketReef-<version>-windows-setup.exe`. It installs for your user only (no administrator prompt), adds a Start menu shortcut and can be removed from *Settings → Apps*.
+- **Portable:** run `PocketReef-<version>-windows-portable.exe` from anywhere. Nothing is installed.
+- Use the 🐠 icon in the system tray (it may start in the ^ overflow; drag it to the taskbar to keep it there), or right-click the tank.
+
+> ⚠️ The .exe files aren't code-signed yet, so SmartScreen may say "Windows protected your PC". Choose **More info → Run anyway**.
+
+Either way, your tank is saved in `~/Library/Application Support/Pocket Reef` (macOS) or `%APPDATA%\Pocket Reef` (Windows), so it survives updates and uninstalling.
+
+To build them yourself: `tools/release/build_macos.sh` on a Mac, or `tools/release/build_windows.ps1` on Windows (see [INSTRUCTIONS.md](INSTRUCTIONS.md)).
 
 ## 🛠️ Develop
 
 ```bash
-brew install --cask godot                                  # Godot 4.7
+brew install --cask godot                                  # Godot 4.7 (on Windows, install Godot 4.7 and put godot.exe on PATH)
 godot --path .                                             # run it
-godot --path . res://tests/smoke_test.tscn -- --save-file=user://smoke_test.json       # 115 checks
+godot --path . res://tests/smoke_test.tscn -- --save-file=user://smoke_test.json       # 115 checks (110 on Windows: the rest need macOS)
 godot --path . res://tests/settings_layout.tscn -- --save-file=user://layout.json     # nothing cut off, 420×400 → 1200×900
-tests/responsiveness.sh                                    # menu-bar responsiveness guard
+tests/responsiveness.sh                                    # menu-bar responsiveness guard (macOS)
 ```
 
 ## 📚 Docs
@@ -64,9 +77,9 @@ tests/responsiveness.sh                                    # menu-bar responsive
 
 ## 🗺️ Status
 
-**v0.6.0** prototype. 🍎 macOS is tested; 🪟 Windows builds but hasn't been tested yet.
+**v0.6.0** prototype. 🍎 macOS and 🪟 Windows 11 are both tested and packaged.
 
-**Next:** a Windows build, Developer ID signing, eating animations, and tapping the glass.
+**Next:** Developer ID signing on macOS, code signing on Windows, pausing a covered tank on Windows, eating animations, and tapping the glass.
 
 ---
 
